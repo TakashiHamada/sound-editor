@@ -62,7 +62,6 @@ All modifications must be made directly to the minified bundle.
 | `Ht` | StatusBar | Bottom: time, selection, zoom, level meter |
 | `Kt` | ExportSettingsModal | Export config dialog (format, rate, depth) |
 | `Yt` | HelpDialog | Keyboard shortcuts overlay (F1) |
-| `Jt` | LogPanel | Persistent log window (bottom-left, last 50 messages) |
 | `qt` | ProcessingModal | Loading/processing indicator overlay |
 
 ### Style/Color Constants (minified names)
