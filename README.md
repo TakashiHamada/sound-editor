@@ -46,7 +46,8 @@ All modifications must be made directly to the minified bundle.
 | [Settings] |                               | NOISE    |          |
 |            |                               | REDUCTION|          |
 +------------+-------------------------------+----------+----------+
-| Status Bar (Ht) - Time | Selection | Zoom | History | Level     |
+| Status Bar (Ht)                                                 |
+| [Log (220px fixed)] | Position | Selection | Zoom | History |Lvl |
 +------------------------------------------------------------------+
 ```
 
@@ -59,7 +60,7 @@ All modifications must be made directly to the minified bundle.
 | `At` | FilesPanel | Left sidebar: file list, info, export |
 | `Ot` | WaveformDisplay | Center: canvas waveform, selection, playhead |
 | `Nt` | EffectsPanel | Right sidebar: volume, fade, noise reduction |
-| `Ht` | StatusBar | Bottom: time, selection, zoom, level meter |
+| `Ht` | StatusBar | Bottom: persistent log + time, selection, zoom, level meter |
 | `Kt` | ExportSettingsModal | Export config dialog (format, rate, depth) |
 | `Yt` | HelpDialog | Keyboard shortcuts overlay (F1) |
 | `qt` | ProcessingModal | Loading/processing indicator overlay |
@@ -157,6 +158,43 @@ Note: `audioBuffer._originalBitDepth` is set on WAV files at load time (8/16/24/
 | `undo()` / `redo()` | History navigation |
 | `log(text, level, detail)` | Show status bar message |
 | `setProcessing(message|null)` | Show/hide processing modal |
+
+## Logging
+
+The StatusBar has a persistent log area (220px, left side) that always shows the latest log message. Status info (Position, Selection, Zoom, etc.) is displayed alongside to the right.
+
+- Log persists until the next log message arrives (no auto-fade)
+- Shows "No log" in dim text when empty
+- Click to copy detailed log text to clipboard
+- Error level shown in red with `✘` icon; info level in green with `✔`
+
+### Logged Operations
+
+| Operation | Log Message Example |
+|-----------|-------------------|
+| File load | `Loaded "file.wav"` |
+| File close | `Closed "file.wav"` |
+| Close all | `Closed all files (3)` |
+| Export | `Exported "file.mp3"` |
+| Export fail | `Export failed` (error) |
+| Undo / Redo | `Undo` / `Redo` |
+| Copy | `Copied 2.50s` |
+| Cut | `Cut 1.30s` |
+| Paste | `Pasted 2.50s at 1.00s` |
+| Delete | `Deleted 0.80s` |
+| Volume | `Volume +3.0 dB` / `Volume -6.0 dB (selection)` |
+| Fade In/Out | `Fade in (linear)` / `Fade out (exponential)` |
+| Noise capture | `Noise profile captured (0.50s)` |
+| Noise reduction | `Noise reduction applied (strength: 0.8)` |
+| Export settings | `Export settings saved (wav, 44100Hz, stereo)` |
+| Reset settings | `Export settings reset to default` |
+
+### Adding New Logs
+
+Use `k.getState().log(text, level, detail)`:
+- `text`: Short message for StatusBar (keep under ~40 chars)
+- `level`: `"info"` (default, green) or `"error"` (red)
+- `detail`: Longer text copied to clipboard on click (defaults to `text`)
 
 ## Audio Processing Pipeline
 
