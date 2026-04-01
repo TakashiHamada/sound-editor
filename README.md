@@ -87,37 +87,37 @@ Zustand-like store created via `C()`. Access with `k()` (hook) or `k.getState()`
 
 ### State Fields
 
-```javascript
+```
 {
-  files: Map<id, FileData>,   // All loaded files
-  activeFileId: string|null,  // Currently selected file
-  maxFiles: 8,                // Max simultaneous files
-  maxHistory: 10,             // Max undo history per file
-  isPlaying: boolean,
-  clipboard: { buffer, sampleRate, numberOfChannels } | null,
-  exportConfig: ExportConfig | null,  // null = use original file props
-  previewGain: number | null,
-  logMessage: { text, detail, level, timestamp } | null,
-  processing: string | null   // Non-null shows processing modal
+  files: Map,                   // Map<string, FileData> - All loaded files
+  activeFileId: null,           // Currently selected file ID (string or null)
+  maxFiles: 8,                  // Max simultaneous files
+  maxHistory: 10,               // Max undo history per file
+  isPlaying: false,
+  clipboard: null,              // { buffer, sampleRate, numberOfChannels } or null
+  exportConfig: null,           // ExportConfig object or null (null = use original file props)
+  previewGain: null,            // number or null
+  logMessage: null,             // { text, detail, level, timestamp } or null
+  processing: null              // string or null - Non-null shows processing modal
 }
 ```
 
 ### FileData Structure
 
-```javascript
+```
 {
-  id: string,                  // crypto.randomUUID()
+  id: "...",                   // crypto.randomUUID()
   audioBuffer: AudioBuffer,    // Decoded audio (Web Audio API)
-  fileName: string,
-  selectionStart: number|null, // Seconds
-  selectionEnd: number|null,
-  zoom: number,                // 1 = default
-  scrollX: number,
-  currentTime: number,
-  noiseProfile: Float32Array|null,
-  history: AudioBuffer[],
-  historyIndex: number,
-  modified: boolean
+  fileName: "example.wav",
+  selectionStart: null,        // Seconds (number or null)
+  selectionEnd: null,          // Seconds (number or null)
+  zoom: 1,                     // 1 = default
+  scrollX: 0,
+  currentTime: 0,
+  noiseProfile: null,          // Float32Array or null
+  history: [],                 // Array of AudioBuffer snapshots
+  historyIndex: 0,
+  modified: false
 }
 ```
 
@@ -125,14 +125,14 @@ Note: `audioBuffer._originalBitDepth` is set on WAV files at load time (8/16/24/
 
 ### ExportConfig Structure
 
-```javascript
+```
 {
-  format: "wav" | "mp3",
-  sampleRate: number,          // 8000-96000
-  srcQuality: "low"|"medium"|"high",
-  channels: "mono" | "stereo",
-  bitDepth: 8|16|24|32,       // WAV only
-  bitrate: 128|192|256|320    // MP3 only (kbps)
+  format: "wav",               // "wav" or "mp3"
+  sampleRate: 44100,           // 8000-96000
+  srcQuality: "medium",        // "low", "medium", or "high"
+  channels: "stereo",          // "mono" or "stereo"
+  bitDepth: 24,                // 8, 16, 24, or 32 (WAV only)
+  bitrate: 192                 // 128, 192, 256, or 320 kbps (MP3 only)
 }
 ```
 
@@ -311,15 +311,20 @@ The app displays the current **branch name** and **last commit timestamp (JST)**
 
 **This value is hardcoded in the bundle and MUST be updated on every commit.**
 
-Location in `assets/index-wGz6QD6f.js`:
+Location in `assets/index-wGz6QD6f.js` (format: `<branch>`,` | `,`<YYYY-MM-DD HH:MM JST>`):
 ```
-`claude/understand-sound-editor-UM3z1`,` | `,`2026-04-01 11:20 JST`
+`claude/understand-sound-editor-UM3z1`,` | `,`<YYYY-MM-DD HH:MM JST>`
+```
+
+To find the current value:
+```bash
+grep -ao 'understand-sound-editor.\{0,50\}JST' assets/index-wGz6QD6f.js
 ```
 
 Update procedure:
-1. Before committing, get the current time in JST: `TZ=Asia/Tokyo date '+%Y-%m-%d %H:%M JST'`
-2. Update the branch name (if changed) and timestamp in the bundle
-3. Search pattern: grep -ao 'understand-sound-editor.\{0,50\}JST' assets/index-wGz6QD6f.js
+1. Get the current time in JST: `TZ=Asia/Tokyo date '+%Y-%m-%d %H:%M JST'`
+2. Replace the old timestamp with the new one in the bundle
+3. Update the branch name too if it has changed
 4. Then commit and push
 
 **AI agents: Do not forget this step. Every commit must include an updated timestamp.**
