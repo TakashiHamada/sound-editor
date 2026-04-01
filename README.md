@@ -267,6 +267,21 @@ dd if=assets/index-wGz6QD6f.js bs=1 skip=OFFSET count=LENGTH 2>/dev/null
 
 All deploy commits follow: `deploy: <source-commit-hash>`. Feature/fix commits use conventional format (`feat:`, `fix:`, etc.).
 
-### Version Indicator
+### Version Indicator (MUST UPDATE ON EVERY COMMIT)
 
-The app displays the current branch name and last commit timestamp in the top-right corner (left of the `?` button) for version identification.
+The app displays the current **branch name** and **last commit timestamp (JST)** in the top-right corner (left of the `?` button) for version identification.
+
+**This value is hardcoded in the bundle and MUST be updated on every commit.**
+
+Location in `assets/index-wGz6QD6f.js`:
+```
+`claude/understand-sound-editor-UM3z1`,` | `,`2026-04-01 11:20 JST`
+```
+
+Update procedure:
+1. Before committing, get the current time in JST: `TZ=Asia/Tokyo date '+%Y-%m-%d %H:%M JST'`
+2. Update the branch name (if changed) and timestamp in the bundle
+3. Search pattern: grep -ao 'understand-sound-editor.\{0,50\}JST' assets/index-wGz6QD6f.js
+4. Then commit and push
+
+**AI agents: Do not forget this step. Every commit must include an updated timestamp.**
