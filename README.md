@@ -51,6 +51,27 @@ All modifications must be made directly to the minified bundle.
 +------------------------------------------------------------------+
 ```
 
+### Geometric Placeholder (injected via `index.html`)
+
+When no audio files are loaded, the waveform display area shows an animated overlay of Islamic geometric motifs (8-pointed stars, hexagonal rosettes, diamond lattices). The animation fades tiles in and out at random intervals for an organic, breathing effect.
+
+**Implementation:** CSS + vanilla JS injected in `index.html` (not in the React bundle).
+
+| Element | Description |
+|---------|-------------|
+| `#waveform-placeholder` | Absolute-positioned overlay on the waveform container |
+| `.geo-grid` | CSS Grid filling the container with `72px` tiles |
+| `.geo-tile svg` | SVG motifs animated via `@keyframes geoWave` (8s cycle) |
+
+**Visibility detection:** Polls every 500ms for `"No file loaded"` text in `#root`. When any file is loaded, the overlay fades out (`opacity: 0`, `transition: 0.5s`). When all files are closed, it fades back in.
+
+**Design notes:**
+- Three motif types cycle in a checkerboard `(row + col) % 3` pattern
+- 10-color cyan palette (`#4fc3f7`–`#0288d1`)
+- `animation-delay` randomized per tile (`Math.random() * 8s`)
+- Initial opacity is 0 (fully transparent) — tiles fade in only via animation
+- `pointer-events: none` ensures drag & drop passes through
+
 ### Component Map (minified names)
 
 | Symbol | Component | Role |
