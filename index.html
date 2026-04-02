@@ -21,10 +21,18 @@
       ::-webkit-scrollbar-thumb:hover { background: #3a3a5a; }
       ::selection { background: rgba(79, 195, 247, 0.3); }
 
-      /* Waveform placeholder animation (shown when no audio is loaded) */
-      @keyframes waveBar {
-        0%, 100% { transform: scaleY(0.15); }
-        50% { transform: scaleY(1.0); }
+      /* Geometric placeholder animation (shown when no audio is loaded) */
+      @keyframes geoWave {
+        0%, 100% { transform: scale(0.5) rotate(0deg); opacity: 0.1; }
+        50% { transform: scale(1.0) rotate(45deg); opacity: 0.7; }
+      }
+      @keyframes geoSpin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+      @keyframes geoBreath {
+        0%, 100% { transform: scale(0.85); opacity: 0.15; }
+        50% { transform: scale(1.15); opacity: 0.55; }
       }
       @keyframes placeholderFadeIn {
         from { opacity: 0; }
@@ -39,34 +47,35 @@
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        gap: 18px;
+        gap: 24px;
         opacity: 1;
-        transition: opacity 0.4s ease;
-        animation: placeholderFadeIn 0.6s ease;
+        transition: opacity 0.5s ease;
+        animation: placeholderFadeIn 0.8s ease;
+        overflow: hidden;
       }
       #waveform-placeholder.hidden {
         opacity: 0;
       }
-      #waveform-placeholder .wave-bars {
+      #waveform-placeholder .geo-grid {
+        display: grid;
+        gap: 6px;
+        align-items: center;
+        justify-items: center;
+      }
+      #waveform-placeholder .geo-tile {
         display: flex;
         align-items: center;
-        gap: 3px;
-        height: 64px;
+        justify-content: center;
       }
-      #waveform-placeholder .wave-bar {
-        width: 3px;
-        height: 100%;
-        background: #4fc3f7;
-        border-radius: 2px;
-        opacity: 0.45;
-        animation: waveBar 1.8s ease-in-out infinite;
+      #waveform-placeholder .geo-tile svg {
+        animation: geoWave 3s ease-in-out infinite;
       }
       #waveform-placeholder .wave-label {
-        color: #8888aa;
+        color: #7a7a9a;
         font-size: 13px;
         text-align: center;
         font-family: 'Segoe UI', 'Roboto', 'Helvetica Neue', sans-serif;
-        letter-spacing: 0.5px;
+        letter-spacing: 1px;
       }
     </style>
     <script type="module" crossorigin src="./assets/index-wGz6QD6f.js"></script>
@@ -75,9 +84,15 @@
     <div id="root"></div>
     <script>
       (function () {
-        var BAR_COUNT = 35;
+        var COLS = 15;
+        var ROWS = 6;
+        var TILE_SIZE = 36;
         var POLL_INTERVAL = 200;
         var POLL_TIMEOUT = 10000;
+
+        // Color palette inspired by Islamic geometric art
+        var COLORS = ['#4fc3f7', '#80deea', '#4dd0e1', '#26c6da', '#00bcd4',
+                      '#b2ebf2', '#4fc3f7', '#29b6f6', '#03a9f4', '#0288d1'];
 
         function findWaveformCanvas() {
           var canvases = document.querySelectorAll('canvas');
@@ -91,22 +106,173 @@
           return null;
         }
 
+        // 8-pointed star (Rub el Hizb) — classic Islamic motif
+        function createStar8(size, color) {
+          var s = size;
+          var ns = 'http://www.w3.org/2000/svg';
+          var svg = document.createElementNS(ns, 'svg');
+          svg.setAttribute('width', s);
+          svg.setAttribute('height', s);
+          svg.setAttribute('viewBox', '0 0 100 100');
+
+          // Two overlapping squares rotated 45 degrees to form 8-pointed star
+          var sq1 = document.createElementNS(ns, 'rect');
+          sq1.setAttribute('x', '22'); sq1.setAttribute('y', '22');
+          sq1.setAttribute('width', '56'); sq1.setAttribute('height', '56');
+          sq1.setAttribute('fill', 'none');
+          sq1.setAttribute('stroke', color); sq1.setAttribute('stroke-width', '1.5');
+          sq1.setAttribute('transform', 'rotate(45 50 50)');
+
+          var sq2 = document.createElementNS(ns, 'rect');
+          sq2.setAttribute('x', '22'); sq2.setAttribute('y', '22');
+          sq2.setAttribute('width', '56'); sq2.setAttribute('height', '56');
+          sq2.setAttribute('fill', 'none');
+          sq2.setAttribute('stroke', color); sq2.setAttribute('stroke-width', '1.5');
+
+          // Inner octagon
+          var oct = document.createElementNS(ns, 'polygon');
+          var r = 22, cx = 50, cy = 50;
+          var pts = [];
+          for (var k = 0; k < 8; k++) {
+            var angle = (k * 45 - 90) * Math.PI / 180;
+            pts.push((cx + r * Math.cos(angle)).toFixed(1) + ',' + (cy + r * Math.sin(angle)).toFixed(1));
+          }
+          oct.setAttribute('points', pts.join(' '));
+          oct.setAttribute('fill', 'none');
+          oct.setAttribute('stroke', color); oct.setAttribute('stroke-width', '1');
+
+          // Center dot
+          var dot = document.createElementNS(ns, 'circle');
+          dot.setAttribute('cx', '50'); dot.setAttribute('cy', '50');
+          dot.setAttribute('r', '3');
+          dot.setAttribute('fill', color); dot.setAttribute('opacity', '0.6');
+
+          svg.appendChild(sq1);
+          svg.appendChild(sq2);
+          svg.appendChild(oct);
+          svg.appendChild(dot);
+          return svg;
+        }
+
+        // Hexagonal rosette
+        function createHexRosette(size, color) {
+          var ns = 'http://www.w3.org/2000/svg';
+          var svg = document.createElementNS(ns, 'svg');
+          svg.setAttribute('width', size);
+          svg.setAttribute('height', size);
+          svg.setAttribute('viewBox', '0 0 100 100');
+
+          // Outer hexagon
+          var hex = document.createElementNS(ns, 'polygon');
+          var pts = [];
+          for (var k = 0; k < 6; k++) {
+            var a = (k * 60 - 30) * Math.PI / 180;
+            pts.push((50 + 38 * Math.cos(a)).toFixed(1) + ',' + (50 + 38 * Math.sin(a)).toFixed(1));
+          }
+          hex.setAttribute('points', pts.join(' '));
+          hex.setAttribute('fill', 'none');
+          hex.setAttribute('stroke', color); hex.setAttribute('stroke-width', '1.5');
+
+          // Inner star lines — 6 triangles radiating from center
+          var g = document.createElementNS(ns, 'g');
+          for (var k = 0; k < 6; k++) {
+            var a1 = (k * 60 - 30) * Math.PI / 180;
+            var a2 = ((k + 1) * 60 - 30) * Math.PI / 180;
+            var line = document.createElementNS(ns, 'polygon');
+            var x1 = 50 + 38 * Math.cos(a1), y1 = 50 + 38 * Math.sin(a1);
+            var x2 = 50 + 38 * Math.cos(a2), y2 = 50 + 38 * Math.sin(a2);
+            line.setAttribute('points',
+              '50,50 ' + x1.toFixed(1) + ',' + y1.toFixed(1) + ' ' + x2.toFixed(1) + ',' + y2.toFixed(1));
+            line.setAttribute('fill', 'none');
+            line.setAttribute('stroke', color); line.setAttribute('stroke-width', '0.8');
+            g.appendChild(line);
+          }
+
+          // Inner hexagon
+          var hex2 = document.createElementNS(ns, 'polygon');
+          var pts2 = [];
+          for (var k = 0; k < 6; k++) {
+            var a = (k * 60) * Math.PI / 180;
+            pts2.push((50 + 16 * Math.cos(a)).toFixed(1) + ',' + (50 + 16 * Math.sin(a)).toFixed(1));
+          }
+          hex2.setAttribute('points', pts2.join(' '));
+          hex2.setAttribute('fill', 'none');
+          hex2.setAttribute('stroke', color); hex2.setAttribute('stroke-width', '1');
+
+          svg.appendChild(hex);
+          svg.appendChild(g);
+          svg.appendChild(hex2);
+          return svg;
+        }
+
+        // Diamond lattice tile
+        function createDiamond(size, color) {
+          var ns = 'http://www.w3.org/2000/svg';
+          var svg = document.createElementNS(ns, 'svg');
+          svg.setAttribute('width', size);
+          svg.setAttribute('height', size);
+          svg.setAttribute('viewBox', '0 0 100 100');
+
+          // Diamond shape
+          var d = document.createElementNS(ns, 'polygon');
+          d.setAttribute('points', '50,8 92,50 50,92 8,50');
+          d.setAttribute('fill', 'none');
+          d.setAttribute('stroke', color); d.setAttribute('stroke-width', '1.5');
+
+          // Inner cross
+          var l1 = document.createElementNS(ns, 'line');
+          l1.setAttribute('x1', '50'); l1.setAttribute('y1', '20');
+          l1.setAttribute('x2', '50'); l1.setAttribute('y2', '80');
+          l1.setAttribute('stroke', color); l1.setAttribute('stroke-width', '0.8');
+          var l2 = document.createElementNS(ns, 'line');
+          l2.setAttribute('x1', '20'); l2.setAttribute('y1', '50');
+          l2.setAttribute('x2', '80'); l2.setAttribute('y2', '50');
+          l2.setAttribute('stroke', color); l2.setAttribute('stroke-width', '0.8');
+
+          // Inner diamond
+          var d2 = document.createElementNS(ns, 'polygon');
+          d2.setAttribute('points', '50,30 70,50 50,70 30,50');
+          d2.setAttribute('fill', 'none');
+          d2.setAttribute('stroke', color); d2.setAttribute('stroke-width', '1');
+
+          svg.appendChild(d);
+          svg.appendChild(l1);
+          svg.appendChild(l2);
+          svg.appendChild(d2);
+          return svg;
+        }
+
+        var shapeCreators = [createStar8, createHexRosette, createDiamond];
+
         function createPlaceholder() {
           var el = document.createElement('div');
           el.id = 'waveform-placeholder';
 
-          var barsContainer = document.createElement('div');
-          barsContainer.className = 'wave-bars';
-          for (var i = 0; i < BAR_COUNT; i++) {
-            var bar = document.createElement('div');
-            bar.className = 'wave-bar';
-            bar.style.animationDelay = (i * 0.06) + 's';
-            // Vary bar max-height for a more organic waveform look
-            var scale = 0.4 + 0.6 * Math.sin((i / BAR_COUNT) * Math.PI);
-            bar.style.maxHeight = (scale * 100) + '%';
-            barsContainer.appendChild(bar);
+          var grid = document.createElement('div');
+          grid.className = 'geo-grid';
+          grid.style.gridTemplateColumns = 'repeat(' + COLS + ', ' + TILE_SIZE + 'px)';
+          grid.style.gridTemplateRows = 'repeat(' + ROWS + ', ' + TILE_SIZE + 'px)';
+
+          for (var row = 0; row < ROWS; row++) {
+            for (var col = 0; col < COLS; col++) {
+              var tile = document.createElement('div');
+              tile.className = 'geo-tile';
+
+              // Pick shape based on position (checkerboard-like pattern)
+              var shapeIdx = (row + col) % 3;
+              var color = COLORS[(row * COLS + col) % COLORS.length];
+              var svg = shapeCreators[shapeIdx](TILE_SIZE - 4, color);
+
+              // Wave animation delay based on distance from left
+              // Creates a wave that sweeps left to right
+              var dist = col * 0.15 + row * 0.08;
+              svg.style.animationDelay = dist.toFixed(2) + 's';
+
+              tile.appendChild(svg);
+              grid.appendChild(tile);
+            }
           }
-          el.appendChild(barsContainer);
+          el.appendChild(grid);
 
           var label = document.createElement('div');
           label.className = 'wave-label';
@@ -123,7 +289,6 @@
           var container = canvas.parentElement;
           if (!container) return false;
 
-          // Ensure overlay can be positioned inside the container
           if (getComputedStyle(container).position === 'static') {
             container.style.position = 'relative';
           }
@@ -131,7 +296,6 @@
           var placeholder = createPlaceholder();
           container.appendChild(placeholder);
 
-          // Set initial state
           function updateVisibility() {
             if (canvas.style.cursor === 'crosshair') {
               placeholder.classList.add('hidden');
@@ -141,11 +305,9 @@
           }
           updateVisibility();
 
-          // Watch for cursor style changes (audio load/unload)
           var styleObserver = new MutationObserver(updateVisibility);
           styleObserver.observe(canvas, { attributes: true, attributeFilter: ['style'] });
 
-          // Handle React replacing the canvas element
           var childObserver = new MutationObserver(function () {
             if (!container.contains(canvas)) {
               styleObserver.disconnect();
@@ -162,7 +324,6 @@
           return true;
         }
 
-        // Poll for the canvas to appear (React renders asynchronously)
         var elapsed = 0;
         var poll = setInterval(function () {
           if (initPlaceholder() || elapsed >= POLL_TIMEOUT) {
