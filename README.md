@@ -313,12 +313,12 @@ The app displays the current **branch name** and **last commit timestamp (JST)**
 
 Location in `assets/index-wGz6QD6f.js` (format: `<branch>`,` | `,`<YYYY-MM-DD HH:MM JST>`):
 ```
-`claude/understand-sound-editor-UM3z1`,` | `,`<YYYY-MM-DD HH:MM JST>`
+`claude/add-audio-placeholder-eBid1`,` | `,`<YYYY-MM-DD HH:MM JST>`
 ```
 
 To find the current value:
 ```bash
-grep -ao 'understand-sound-editor.\{0,50\}JST' assets/index-wGz6QD6f.js
+grep -ao 'add-audio-placeholder.\{0,50\}JST' assets/index-wGz6QD6f.js
 ```
 
 Update procedure:
