@@ -20,10 +20,216 @@
       ::-webkit-scrollbar-thumb { background: #2a2a4a; border-radius: 4px; }
       ::-webkit-scrollbar-thumb:hover { background: #3a3a5a; }
       ::selection { background: rgba(79, 195, 247, 0.3); }
+
+      /* Geometric placeholder — Islamic-inspired motifs shown when no audio is loaded */
+      @keyframes geoWave {
+        0%, 100% { transform: scale(0.5) rotate(0deg); opacity: 0; }
+        50% { transform: scale(1.0) rotate(45deg); opacity: 0.3; }
+      }
+      #waveform-placeholder {
+        position: absolute;
+        top: 0; left: 0; right: 0; bottom: 0;
+        z-index: 10;
+        pointer-events: none;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 1;
+        transition: opacity 0.5s ease;
+        overflow: hidden;
+      }
+      #waveform-placeholder.hidden { opacity: 0; transition: none; }
+      #waveform-placeholder .geo-grid {
+        display: grid;
+        gap: 2px;
+        align-items: center;
+        justify-items: center;
+        width: 100%;
+        height: 100%;
+        padding: 4px;
+      }
+      #waveform-placeholder .geo-tile {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      #waveform-placeholder .geo-tile svg {
+        opacity: 0;
+        animation: geoWave 8s ease-in-out infinite;
+      }
     </style>
     <script type="module" crossorigin src="./assets/index-wGz6QD6f.js"></script>
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      // Geometric placeholder — Islamic-inspired animated motifs for empty waveform area
+      (function () {
+        var TILE_SIZE = 72;
+        var NS = 'http://www.w3.org/2000/svg';
+        var COLORS = [
+          '#4fc3f7', '#80deea', '#4dd0e1', '#26c6da', '#00bcd4',
+          '#b2ebf2', '#29b6f6', '#03a9f4', '#0288d1', '#b2ebf2'
+        ];
+
+        // --- SVG helpers ---
+
+        function svgEl(tag, attrs) {
+          var el = document.createElementNS(NS, tag);
+          for (var k in attrs) el.setAttribute(k, attrs[k]);
+          return el;
+        }
+
+        function makeSvg(size) {
+          return svgEl('svg', { width: size, height: size, viewBox: '0 0 100 100' });
+        }
+
+        function polygon(pts, color, sw) {
+          return svgEl('polygon', { points: pts, fill: 'none', stroke: color, 'stroke-width': sw || '1.5' });
+        }
+
+        function regularPoints(n, r, offset) {
+          var pts = [];
+          for (var i = 0; i < n; i++) {
+            var a = (i * 360 / n + (offset || -90)) * Math.PI / 180;
+            pts.push((50 + r * Math.cos(a)).toFixed(1) + ',' + (50 + r * Math.sin(a)).toFixed(1));
+          }
+          return pts.join(' ');
+        }
+
+        // --- Three Islamic geometric motifs ---
+
+        // 8-pointed star (Rub el Hizb): two overlapping squares + inner octagon
+        function createStar8(size, color) {
+          var svg = makeSvg(size);
+          var rectAttrs = { x: 22, y: 22, width: 56, height: 56, fill: 'none', stroke: color, 'stroke-width': '1.5' };
+          svg.appendChild(svgEl('rect', Object.assign({}, rectAttrs, { transform: 'rotate(45 50 50)' })));
+          svg.appendChild(svgEl('rect', rectAttrs));
+          svg.appendChild(polygon(regularPoints(8, 22), color, '1'));
+          svg.appendChild(svgEl('circle', { cx: 50, cy: 50, r: 3, fill: color, opacity: '0.6' }));
+          return svg;
+        }
+
+        // Hexagonal rosette: outer hexagon + 6 radiating triangles + inner hexagon
+        function createHexRosette(size, color) {
+          var svg = makeSvg(size);
+          svg.appendChild(polygon(regularPoints(6, 38, -30), color));
+          for (var i = 0; i < 6; i++) {
+            var a1 = (i * 60 - 30) * Math.PI / 180;
+            var a2 = ((i + 1) * 60 - 30) * Math.PI / 180;
+            svg.appendChild(polygon(
+              '50,50 ' + (50 + 38 * Math.cos(a1)).toFixed(1) + ',' + (50 + 38 * Math.sin(a1)).toFixed(1) +
+              ' ' + (50 + 38 * Math.cos(a2)).toFixed(1) + ',' + (50 + 38 * Math.sin(a2)).toFixed(1),
+              color, '0.8'));
+          }
+          svg.appendChild(polygon(regularPoints(6, 16, 0), color, '1'));
+          return svg;
+        }
+
+        // Diamond lattice: outer diamond + cross + inner diamond
+        function createDiamond(size, color) {
+          var svg = makeSvg(size);
+          svg.appendChild(polygon('50,8 92,50 50,92 8,50', color));
+          svg.appendChild(svgEl('line', { x1: 50, y1: 20, x2: 50, y2: 80, stroke: color, 'stroke-width': '0.8' }));
+          svg.appendChild(svgEl('line', { x1: 20, y1: 50, x2: 80, y2: 50, stroke: color, 'stroke-width': '0.8' }));
+          svg.appendChild(polygon('50,30 70,50 50,70 30,50', color, '1'));
+          return svg;
+        }
+
+        var SHAPES = [createStar8, createHexRosette, createDiamond];
+
+        // --- Placeholder grid ---
+
+        function buildGrid(container) {
+          var rect = container.getBoundingClientRect();
+          var cols = Math.max(1, Math.ceil(rect.width / (TILE_SIZE + 2)));
+          var rows = Math.max(1, Math.ceil(rect.height / (TILE_SIZE + 2)));
+
+          var grid = document.createElement('div');
+          grid.className = 'geo-grid';
+          grid.style.gridTemplateColumns = 'repeat(' + cols + ', ' + TILE_SIZE + 'px)';
+          grid.style.gridTemplateRows = 'repeat(' + rows + ', ' + TILE_SIZE + 'px)';
+
+          for (var row = 0; row < rows; row++) {
+            for (var col = 0; col < cols; col++) {
+              var tile = document.createElement('div');
+              tile.className = 'geo-tile';
+              var svg = SHAPES[(row + col) % 3](TILE_SIZE - 4, COLORS[(row * cols + col) % COLORS.length]);
+              svg.style.animationDelay = (Math.random() * 8).toFixed(2) + 's';
+              tile.appendChild(svg);
+              grid.appendChild(tile);
+            }
+          }
+          return grid;
+        }
+
+        // --- Initialization & visibility detection ---
+
+        // Find the waveform container by structural layout:
+        // the largest canvas's parent with border-radius (waveform panel).
+        function findWaveformContainer() {
+          var best = null, bestArea = 0;
+          var canvases = document.querySelectorAll('#root canvas');
+          for (var i = 0; i < canvases.length; i++) {
+            var c = canvases[i];
+            var area = c.width * c.height;
+            if (area > bestArea) { bestArea = area; best = c; }
+          }
+          return best ? best.parentElement : null;
+        }
+
+        // Check for empty-state indicator in the file panel.
+        // The React app renders a div with "No file loaded" + "Ctrl+O or drag & drop"
+        // when no files are open. We target this specific two-child structure.
+        function findEmptyStateNode() {
+          var spans = document.querySelectorAll('#root span');
+          for (var i = 0; i < spans.length; i++) {
+            if (spans[i].textContent === 'Ctrl+O or drag & drop') return spans[i];
+          }
+          return null;
+        }
+
+        function init() {
+          var container = findWaveformContainer();
+          if (!container) return false;
+
+          if (getComputedStyle(container).position === 'static') {
+            container.style.position = 'relative';
+          }
+
+          var placeholder = document.createElement('div');
+          placeholder.id = 'waveform-placeholder';
+          placeholder.appendChild(buildGrid(container));
+          container.appendChild(placeholder);
+
+          // Set initial visibility
+          placeholder.classList.toggle('hidden', !findEmptyStateNode());
+
+          // React DOM mutations trigger instant visibility check
+          var observer = new MutationObserver(function () {
+            placeholder.classList.toggle('hidden', !findEmptyStateNode());
+          });
+          observer.observe(document.getElementById('root'), {
+            childList: true, subtree: true
+          });
+
+          // Rebuild grid on container resize
+          var resizeObserver = new ResizeObserver(function () {
+            var oldGrid = placeholder.querySelector('.geo-grid');
+            if (oldGrid) placeholder.removeChild(oldGrid);
+            placeholder.appendChild(buildGrid(container));
+          });
+          resizeObserver.observe(container);
+
+          return true;
+        }
+
+        // Wait for React to render, then initialize
+        var elapsed = 0;
+        var poll = setInterval(function () {
+          if (init() || (elapsed += 200) >= 10000) clearInterval(poll);
+        }, 200);
+      })();
+    </script>
   </body>
 </html>

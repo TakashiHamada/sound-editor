@@ -12,7 +12,7 @@ assets/index-wGz6QD6f.js           # Bundled app (~504KB, minified)
 favicon.svg                         # Waveform icon
 ```
 
-All modifications must be made directly to the minified bundle.
+React component or state logic changes must be made directly to the minified bundle. UI additions that don't touch React internals (CSS overrides, DOM overlays, injected scripts) should be added to `index.html` instead.
 
 ## Tech Stack
 
@@ -50,6 +50,32 @@ All modifications must be made directly to the minified bundle.
 | [Log (220px fixed)] | Position | Selection | Zoom | History |Lvl |
 +------------------------------------------------------------------+
 ```
+
+### Geometric Placeholder (injected via `index.html`)
+
+When no audio files are loaded, the waveform display area shows an animated overlay of Islamic geometric motifs (8-pointed stars, hexagonal rosettes, diamond lattices). The animation fades tiles in and out at random intervals for an organic, breathing effect.
+
+**Implementation:** CSS + vanilla JS injected in `index.html` (not in the React bundle).
+
+| Element | Description |
+|---------|-------------|
+| `#waveform-placeholder` | Absolute-positioned overlay on the waveform container |
+| `.geo-grid` | CSS Grid filling the container with `72px` tiles |
+| `.geo-tile svg` | SVG motifs animated via `@keyframes geoWave` (8s cycle) |
+
+**Container detection:** Finds the largest `<canvas>` inside `#root` and uses its parent element. This avoids hard-coded color matching and works regardless of theme changes.
+
+**Visibility detection:** A `MutationObserver` on `#root` (`childList` + `subtree`) triggers on every React DOM update. It checks for the `"Ctrl+O or drag & drop"` empty-state `<span>` that React renders when no files are loaded. File load hides the overlay instantly (`transition: none`); closing all files fades it back in (`transition: 0.5s`).
+
+**Resize handling:** A `ResizeObserver` on the waveform container rebuilds the grid when the container size changes, keeping tile coverage consistent.
+
+**Design notes:**
+- Three motif types cycle in a checkerboard `(row + col) % 3` pattern
+- 10-color cyan palette (`#4fc3f7`–`#0288d1`)
+- Grid uses explicit `repeat(cols, 72px)` / `repeat(rows, 72px)` based on container size
+- `animation-delay` randomized per tile (`Math.random() * 8s`)
+- Initial opacity is 0 (fully transparent) — tiles fade in only via animation
+- `pointer-events: none` ensures drag & drop passes through
 
 ### Component Map (minified names)
 
@@ -313,12 +339,12 @@ The app displays the current **branch name** and **last commit timestamp (JST)**
 
 Location in `assets/index-wGz6QD6f.js` (format: `<branch>`,` | `,`<YYYY-MM-DD HH:MM JST>`):
 ```
-`claude/understand-sound-editor-UM3z1`,` | `,`<YYYY-MM-DD HH:MM JST>`
+`claude/add-audio-placeholder-eBid1`,` | `,`<YYYY-MM-DD HH:MM JST>`
 ```
 
 To find the current value:
 ```bash
-grep -ao 'understand-sound-editor.\{0,50\}JST' assets/index-wGz6QD6f.js
+grep -ao 'add-audio-placeholder.\{0,50\}JST' assets/index-wGz6QD6f.js
 ```
 
 Update procedure:
