@@ -23,7 +23,7 @@
 
       /* Geometric placeholder animation (shown when no audio is loaded) */
       @keyframes geoWave {
-        0%, 100% { transform: scale(0.5) rotate(0deg); opacity: 0.04; }
+        0%, 100% { transform: scale(0.5) rotate(0deg); opacity: 0; }
         50% { transform: scale(1.0) rotate(45deg); opacity: 0.3; }
       }
       @keyframes geoSpin {
@@ -71,7 +71,8 @@
         justify-content: center;
       }
       #waveform-placeholder .geo-tile svg {
-        animation: geoWave 3s ease-in-out infinite;
+        opacity: 0;
+        animation: geoWave 8s ease-in-out infinite;
       }
       #waveform-placeholder .wave-label {
         position: absolute;
@@ -271,7 +272,7 @@
 
               // Wave animation delay based on distance from left
               // Creates a wave that sweeps left to right
-              var dist = col * 0.15 + row * 0.08;
+              var dist = col * 0.35 + row * 0.2;
               svg.style.animationDelay = dist.toFixed(2) + 's';
 
               tile.appendChild(svg);
