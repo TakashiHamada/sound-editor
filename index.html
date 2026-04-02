@@ -291,8 +291,14 @@
           var placeholder = createPlaceholder(cols, rows);
           container.appendChild(placeholder);
 
+          // Detect loaded files by checking for "No file loaded" text in file panel
+          function hasLoadedFiles() {
+            var root = document.getElementById('root');
+            return root && root.textContent.indexOf('No file loaded') === -1;
+          }
+
           function updateVisibility() {
-            if (canvas.style.cursor === 'crosshair') {
+            if (hasLoadedFiles()) {
               placeholder.classList.add('hidden');
             } else {
               placeholder.classList.remove('hidden');
@@ -300,21 +306,8 @@
           }
           updateVisibility();
 
-          var styleObserver = new MutationObserver(updateVisibility);
-          styleObserver.observe(canvas, { attributes: true, attributeFilter: ['style'] });
-
-          var childObserver = new MutationObserver(function () {
-            if (!container.contains(canvas)) {
-              styleObserver.disconnect();
-              var newCanvas = findWaveformCanvas();
-              if (newCanvas) {
-                canvas = newCanvas;
-                updateVisibility();
-                styleObserver.observe(canvas, { attributes: true, attributeFilter: ['style'] });
-              }
-            }
-          });
-          childObserver.observe(container, { childList: true });
+          // Poll for file load/unload state changes
+          setInterval(updateVisibility, 500);
 
           return true;
         }
