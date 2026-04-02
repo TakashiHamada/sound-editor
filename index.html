@@ -193,9 +193,14 @@
           var placeholder = createPlaceholder(cols, rows);
           container.appendChild(placeholder);
 
-          setInterval(function () {
+          // Use MutationObserver for instant detection when files are loaded
+          var observer = new MutationObserver(function () {
             placeholder.classList.toggle('hidden', hasLoadedFiles());
-          }, 500);
+          });
+          observer.observe(document.getElementById('root'), {
+            childList: true, subtree: true, characterData: true
+          });
+          placeholder.classList.toggle('hidden', hasLoadedFiles());
           return true;
         }
 
