@@ -20,10 +20,157 @@
       ::-webkit-scrollbar-thumb { background: #2a2a4a; border-radius: 4px; }
       ::-webkit-scrollbar-thumb:hover { background: #3a3a5a; }
       ::selection { background: rgba(79, 195, 247, 0.3); }
+
+      /* Waveform placeholder animation (shown when no audio is loaded) */
+      @keyframes waveBar {
+        0%, 100% { transform: scaleY(0.15); }
+        50% { transform: scaleY(1.0); }
+      }
+      @keyframes placeholderFadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+      }
+      #waveform-placeholder {
+        position: absolute;
+        top: 0; left: 0; right: 0; bottom: 0;
+        z-index: 10;
+        pointer-events: none;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 18px;
+        opacity: 1;
+        transition: opacity 0.4s ease;
+        animation: placeholderFadeIn 0.6s ease;
+      }
+      #waveform-placeholder.hidden {
+        opacity: 0;
+      }
+      #waveform-placeholder .wave-bars {
+        display: flex;
+        align-items: center;
+        gap: 3px;
+        height: 64px;
+      }
+      #waveform-placeholder .wave-bar {
+        width: 3px;
+        height: 100%;
+        background: #4fc3f7;
+        border-radius: 2px;
+        opacity: 0.45;
+        animation: waveBar 1.8s ease-in-out infinite;
+      }
+      #waveform-placeholder .wave-label {
+        color: #8888aa;
+        font-size: 13px;
+        text-align: center;
+        font-family: 'Segoe UI', 'Roboto', 'Helvetica Neue', sans-serif;
+        letter-spacing: 0.5px;
+      }
     </style>
     <script type="module" crossorigin src="./assets/index-wGz6QD6f.js"></script>
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      (function () {
+        var BAR_COUNT = 35;
+        var POLL_INTERVAL = 200;
+        var POLL_TIMEOUT = 10000;
+
+        function findWaveformCanvas() {
+          var canvases = document.querySelectorAll('canvas');
+          for (var i = 0; i < canvases.length; i++) {
+            var c = canvases[i];
+            var parent = c.parentElement;
+            if (parent && getComputedStyle(parent).backgroundColor === 'rgb(10, 10, 24)') {
+              return c;
+            }
+          }
+          return null;
+        }
+
+        function createPlaceholder() {
+          var el = document.createElement('div');
+          el.id = 'waveform-placeholder';
+
+          var barsContainer = document.createElement('div');
+          barsContainer.className = 'wave-bars';
+          for (var i = 0; i < BAR_COUNT; i++) {
+            var bar = document.createElement('div');
+            bar.className = 'wave-bar';
+            bar.style.animationDelay = (i * 0.06) + 's';
+            // Vary bar max-height for a more organic waveform look
+            var scale = 0.4 + 0.6 * Math.sin((i / BAR_COUNT) * Math.PI);
+            bar.style.maxHeight = (scale * 100) + '%';
+            barsContainer.appendChild(bar);
+          }
+          el.appendChild(barsContainer);
+
+          var label = document.createElement('div');
+          label.className = 'wave-label';
+          label.textContent = '\u97F3\u58F0\u30D5\u30A1\u30A4\u30EB\u3092\u30C9\u30E9\u30C3\u30B0\uFF06\u30C9\u30ED\u30C3\u30D7\u3001\u307E\u305F\u306F\u30D5\u30A1\u30A4\u30EB\u3092\u958B\u304F';
+          el.appendChild(label);
+
+          return el;
+        }
+
+        function initPlaceholder() {
+          var canvas = findWaveformCanvas();
+          if (!canvas) return false;
+
+          var container = canvas.parentElement;
+          if (!container) return false;
+
+          // Ensure overlay can be positioned inside the container
+          if (getComputedStyle(container).position === 'static') {
+            container.style.position = 'relative';
+          }
+
+          var placeholder = createPlaceholder();
+          container.appendChild(placeholder);
+
+          // Set initial state
+          function updateVisibility() {
+            if (canvas.style.cursor === 'crosshair') {
+              placeholder.classList.add('hidden');
+            } else {
+              placeholder.classList.remove('hidden');
+            }
+          }
+          updateVisibility();
+
+          // Watch for cursor style changes (audio load/unload)
+          var styleObserver = new MutationObserver(updateVisibility);
+          styleObserver.observe(canvas, { attributes: true, attributeFilter: ['style'] });
+
+          // Handle React replacing the canvas element
+          var childObserver = new MutationObserver(function () {
+            if (!container.contains(canvas)) {
+              styleObserver.disconnect();
+              var newCanvas = findWaveformCanvas();
+              if (newCanvas) {
+                canvas = newCanvas;
+                updateVisibility();
+                styleObserver.observe(canvas, { attributes: true, attributeFilter: ['style'] });
+              }
+            }
+          });
+          childObserver.observe(container, { childList: true });
+
+          return true;
+        }
+
+        // Poll for the canvas to appear (React renders asynchronously)
+        var elapsed = 0;
+        var poll = setInterval(function () {
+          if (initPlaceholder() || elapsed >= POLL_TIMEOUT) {
+            clearInterval(poll);
+          }
+          elapsed += POLL_INTERVAL;
+        }, POLL_INTERVAL);
+      })();
+    </script>
   </body>
 </html>
