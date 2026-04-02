@@ -74,17 +74,6 @@
         opacity: 0;
         animation: geoWave 8s ease-in-out infinite;
       }
-      #waveform-placeholder .wave-label {
-        position: absolute;
-        bottom: 16px;
-        left: 0; right: 0;
-        color: #5a5a7a;
-        font-size: 13px;
-        text-align: center;
-        font-family: 'Segoe UI', 'Roboto', 'Helvetica Neue', sans-serif;
-        letter-spacing: 1px;
-        opacity: 0.7;
-      }
     </style>
     <script type="module" crossorigin src="./assets/index-wGz6QD6f.js"></script>
   </head>
@@ -270,9 +259,8 @@
               var color = COLORS[(row * cols + col) % COLORS.length];
               var svg = shapeCreators[shapeIdx](TILE_SIZE - 4, color);
 
-              // Wave animation delay based on distance from left
-              // Creates a wave that sweeps left to right
-              var dist = col * 0.35 + row * 0.2;
+              // Random animation delay for organic appearance
+              var dist = Math.random() * 8;
               svg.style.animationDelay = dist.toFixed(2) + 's';
 
               tile.appendChild(svg);
@@ -280,11 +268,6 @@
             }
           }
           el.appendChild(grid);
-
-          var label = document.createElement('div');
-          label.className = 'wave-label';
-          label.textContent = '\u97F3\u58F0\u30D5\u30A1\u30A4\u30EB\u3092\u30C9\u30E9\u30C3\u30B0\uFF06\u30C9\u30ED\u30C3\u30D7\u3001\u307E\u305F\u306F\u30D5\u30A1\u30A4\u30EB\u3092\u958B\u304F';
-          el.appendChild(label);
 
           return el;
         }
