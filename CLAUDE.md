@@ -33,6 +33,9 @@ This value is hardcoded in `assets/index-wGz6QD6f.js` and **MUST be updated on e
 
 ## Project Structure
 
-- This is a pre-built React app (no source code). Only `index.html` and `assets/index-wGz6QD6f.js` exist.
-- UI modifications that don't touch React internals should be injected via `index.html` (CSS + script).
+- This is a pre-built React app (no source code — `.ts`/`.tsx` files are not in this repo).
+- **Runtime app artifacts:** `index.html` (entry point + injected CSS/scripts) and `assets/index-wGz6QD6f.js` (bundled React app, ~504KB minified).
+- **Other repo files:** `README.md` (architecture docs), `CLAUDE.md` (AI agent instructions), `favicon.svg`.
+- React component or state logic changes must be made directly to the minified bundle.
+- UI additions that don't touch React internals (CSS overrides, DOM overlays) should be injected via `index.html`.
 - See `README.md` for full architecture documentation (component map, state store, audio pipeline, etc.).

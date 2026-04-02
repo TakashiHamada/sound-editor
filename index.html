@@ -140,14 +140,15 @@
 
         // --- Placeholder grid ---
 
-        function createPlaceholder(cols, rows) {
-          var el = document.createElement('div');
-          el.id = 'waveform-placeholder';
+        function buildGrid(container) {
+          var rect = container.getBoundingClientRect();
+          var cols = Math.max(1, Math.ceil(rect.width / (TILE_SIZE + 2)));
+          var rows = Math.max(1, Math.ceil(rect.height / (TILE_SIZE + 2)));
 
           var grid = document.createElement('div');
           grid.className = 'geo-grid';
-          grid.style.gridTemplateColumns = 'repeat(auto-fill, ' + TILE_SIZE + 'px)';
-          grid.style.gridTemplateRows = 'repeat(auto-fill, ' + TILE_SIZE + 'px)';
+          grid.style.gridTemplateColumns = 'repeat(' + cols + ', ' + TILE_SIZE + 'px)';
+          grid.style.gridTemplateRows = 'repeat(' + rows + ', ' + TILE_SIZE + 'px)';
 
           for (var row = 0; row < rows; row++) {
             for (var col = 0; col < cols; col++) {
@@ -159,24 +160,33 @@
               grid.appendChild(tile);
             }
           }
-          el.appendChild(grid);
-          return el;
+          return grid;
         }
 
-        // --- Initialization & visibility polling ---
+        // --- Initialization & visibility detection ---
 
+        // Find the waveform container by structural layout:
+        // the largest canvas's parent with border-radius (waveform panel).
         function findWaveformContainer() {
-          var canvases = document.querySelectorAll('canvas');
+          var best = null, bestArea = 0;
+          var canvases = document.querySelectorAll('#root canvas');
           for (var i = 0; i < canvases.length; i++) {
-            var p = canvases[i].parentElement;
-            if (p && getComputedStyle(p).backgroundColor === 'rgb(10, 10, 24)') return p;
+            var c = canvases[i];
+            var area = c.width * c.height;
+            if (area > bestArea) { bestArea = area; best = c; }
+          }
+          return best ? best.parentElement : null;
+        }
+
+        // Check for empty-state indicator in the file panel.
+        // The React app renders a div with "No file loaded" + "Ctrl+O or drag & drop"
+        // when no files are open. We target this specific two-child structure.
+        function findEmptyStateNode() {
+          var spans = document.querySelectorAll('#root span');
+          for (var i = 0; i < spans.length; i++) {
+            if (spans[i].textContent === 'Ctrl+O or drag & drop') return spans[i];
           }
           return null;
-        }
-
-        function hasLoadedFiles() {
-          var root = document.getElementById('root');
-          return root && root.textContent.indexOf('No file loaded') === -1;
         }
 
         function init() {
@@ -187,20 +197,30 @@
             container.style.position = 'relative';
           }
 
-          var rect = container.getBoundingClientRect();
-          var cols = Math.max(1, Math.ceil(rect.width / (TILE_SIZE + 2)));
-          var rows = Math.max(1, Math.ceil(rect.height / (TILE_SIZE + 2)));
-          var placeholder = createPlaceholder(cols, rows);
+          var placeholder = document.createElement('div');
+          placeholder.id = 'waveform-placeholder';
+          placeholder.appendChild(buildGrid(container));
           container.appendChild(placeholder);
 
-          // Use MutationObserver for instant detection when files are loaded
+          // Set initial visibility
+          placeholder.classList.toggle('hidden', !findEmptyStateNode());
+
+          // React DOM mutations trigger instant visibility check
           var observer = new MutationObserver(function () {
-            placeholder.classList.toggle('hidden', hasLoadedFiles());
+            placeholder.classList.toggle('hidden', !findEmptyStateNode());
           });
           observer.observe(document.getElementById('root'), {
-            childList: true, subtree: true, characterData: true
+            childList: true, subtree: true
           });
-          placeholder.classList.toggle('hidden', hasLoadedFiles());
+
+          // Rebuild grid on container resize
+          var resizeObserver = new ResizeObserver(function () {
+            var oldGrid = placeholder.querySelector('.geo-grid');
+            if (oldGrid) placeholder.removeChild(oldGrid);
+            placeholder.appendChild(buildGrid(container));
+          });
+          resizeObserver.observe(container);
+
           return true;
         }
 
