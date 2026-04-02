@@ -23,16 +23,16 @@
 
       /* Geometric placeholder animation (shown when no audio is loaded) */
       @keyframes geoWave {
-        0%, 100% { transform: scale(0.5) rotate(0deg); opacity: 0.1; }
-        50% { transform: scale(1.0) rotate(45deg); opacity: 0.7; }
+        0%, 100% { transform: scale(0.5) rotate(0deg); opacity: 0.04; }
+        50% { transform: scale(1.0) rotate(45deg); opacity: 0.3; }
       }
       @keyframes geoSpin {
         0% { transform: rotate(0deg); }
         100% { transform: rotate(360deg); }
       }
       @keyframes geoBreath {
-        0%, 100% { transform: scale(0.85); opacity: 0.15; }
-        50% { transform: scale(1.15); opacity: 0.55; }
+        0%, 100% { transform: scale(0.85); opacity: 0.05; }
+        50% { transform: scale(1.15); opacity: 0.25; }
       }
       @keyframes placeholderFadeIn {
         from { opacity: 0; }
@@ -58,9 +58,12 @@
       }
       #waveform-placeholder .geo-grid {
         display: grid;
-        gap: 6px;
+        gap: 2px;
         align-items: center;
         justify-items: center;
+        width: 100%;
+        height: 100%;
+        padding: 4px;
       }
       #waveform-placeholder .geo-tile {
         display: flex;
@@ -71,11 +74,15 @@
         animation: geoWave 3s ease-in-out infinite;
       }
       #waveform-placeholder .wave-label {
-        color: #7a7a9a;
+        position: absolute;
+        bottom: 16px;
+        left: 0; right: 0;
+        color: #5a5a7a;
         font-size: 13px;
         text-align: center;
         font-family: 'Segoe UI', 'Roboto', 'Helvetica Neue', sans-serif;
         letter-spacing: 1px;
+        opacity: 0.7;
       }
     </style>
     <script type="module" crossorigin src="./assets/index-wGz6QD6f.js"></script>
@@ -84,9 +91,7 @@
     <div id="root"></div>
     <script>
       (function () {
-        var COLS = 15;
-        var ROWS = 6;
-        var TILE_SIZE = 36;
+        var TILE_SIZE = 72;
         var POLL_INTERVAL = 200;
         var POLL_TIMEOUT = 10000;
 
@@ -244,23 +249,24 @@
 
         var shapeCreators = [createStar8, createHexRosette, createDiamond];
 
-        function createPlaceholder() {
+        function createPlaceholder(cols, rows) {
           var el = document.createElement('div');
           el.id = 'waveform-placeholder';
 
           var grid = document.createElement('div');
           grid.className = 'geo-grid';
-          grid.style.gridTemplateColumns = 'repeat(' + COLS + ', ' + TILE_SIZE + 'px)';
-          grid.style.gridTemplateRows = 'repeat(' + ROWS + ', ' + TILE_SIZE + 'px)';
+          // Will be sized dynamically in initPlaceholder
+          grid.style.gridTemplateColumns = 'repeat(auto-fill, ' + TILE_SIZE + 'px)';
+          grid.style.gridTemplateRows = 'repeat(auto-fill, ' + TILE_SIZE + 'px)';
 
-          for (var row = 0; row < ROWS; row++) {
-            for (var col = 0; col < COLS; col++) {
+          for (var row = 0; row < rows; row++) {
+            for (var col = 0; col < cols; col++) {
               var tile = document.createElement('div');
               tile.className = 'geo-tile';
 
               // Pick shape based on position (checkerboard-like pattern)
               var shapeIdx = (row + col) % 3;
-              var color = COLORS[(row * COLS + col) % COLORS.length];
+              var color = COLORS[(row * cols + col) % COLORS.length];
               var svg = shapeCreators[shapeIdx](TILE_SIZE - 4, color);
 
               // Wave animation delay based on distance from left
@@ -293,7 +299,12 @@
             container.style.position = 'relative';
           }
 
-          var placeholder = createPlaceholder();
+          // Calculate grid dimensions to fill the container
+          var rect = container.getBoundingClientRect();
+          var cols = Math.max(1, Math.ceil(rect.width / (TILE_SIZE + 2)));
+          var rows = Math.max(1, Math.ceil(rect.height / (TILE_SIZE + 2)));
+
+          var placeholder = createPlaceholder(cols, rows);
           container.appendChild(placeholder);
 
           function updateVisibility() {
