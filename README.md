@@ -276,11 +276,14 @@ Two-stage workflow exposed through the **NOISE REDUCTION** panel:
 
 **Capture (`Oe`)**: For each STFT frame inside `[start, end)`, compute the power spectrum `|X[k]|² = real² + imag²`. Accumulate per-bin `mean(P)` and `mean(P²)` over all frames; derive `std(P) = √(mean(P²) − mean(P)²)`. The returned `Float32Array` has length `2·(N/2+1)` with layout `[mean₀…mean_{f−1} | std₀…std_{f−1}]`. The store keeps it in `FileData.noiseProfile`.
 
-**Apply (`ke`)**: For each frame and each bin `k`, compute a real-valued gain `g[k]` from the input power `P_x` and the noise-floor estimate `N[k] = mean[k] + K·std[k]`:
+**Apply (`ke`)**: For each frame and each bin `k`, compute a real-valued gain `g[k]` from the input power `P_x = |X[k]|²` and the per-bin noise-floor estimate `N[k] = mean[k] + K·std[k]` (both already in the power domain). Let `s = strength / 100 ∈ [0, 1]` be the user-facing _Strength_ slider normalized:
 
 ```
-g[k] = max(β, (P_x − α · N[k] · strength) / P_x)        with g[k] ∈ [β, 1]
+g[k] = max(β, (P_x − α · N[k] · s) / P_x)        if P_x > 1e-20
+g[k] = β                                          otherwise
 ```
+
+`g[k]` is finally clamped to `[β, 1]`. The `1e-20` guard avoids division by zero on near-silent bins; on those bins the floor `β` is applied directly so a small residual is preserved (rather than producing a hard zero).
 
 The gain is then smoothed in two passes before being multiplied onto the complex spectrum (which preserves phase by construction):
 
@@ -300,7 +303,7 @@ After applying gain, the upper half of the spectrum is rebuilt by Hermitian symm
 | `G` (γ) | `0.6`  | Temporal smoothing weight (decay rate) |
 | `K`     | `1.0` | Std multiplier when forming the noise-floor threshold |
 
-The user-visible **Strength** slider (0–100 %) maps to the per-call multiplier `s ∈ [0, 1]` used inside the bracketed term. Inspired by Adobe Audition's spectral-subtraction parameter set (Spectral Decay Rate, Smoothing, Transition Width).
+Inspired by Adobe Audition's spectral-subtraction parameter set (Spectral Decay Rate, Smoothing, Transition Width). The user-facing _Strength_ slider drives `s` as defined above; the table values are internal-only.
 
 **Backward compatibility**: If a profile of length `f` (old format, magnitudes only) is encountered, `ke` squares it to recover an approximate power spectrum and treats `std = 0`.
 
