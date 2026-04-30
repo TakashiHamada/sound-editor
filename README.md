@@ -256,7 +256,56 @@ Export flow (`j` callback):
 | **Gain** | Slider -20 to +20 dB, real-time preview via `previewGain` |
 | **Fade In** | Apply gain ramp from 0 to 1 over duration |
 | **Fade Out** | Apply gain ramp from 1 to 0 over duration |
-| **Noise Reduction** | 1) Capture noise profile from selection 2) Apply with strength 0-100% |
+| **Noise Reduction** | Power-domain Wiener-style spectral subtraction with oversubtraction, spectral floor, and time/frequency gain smoothing. See [Noise Reduction Algorithm](#noise-reduction-algorithm) below. |
+
+#### Noise Reduction Algorithm
+
+Two-stage workflow exposed through the **NOISE REDUCTION** panel:
+
+1. **Capture Noise Profile** (`Oe(buffer, start, end)`) — User selects a noise-only region and clicks _Capture Noise Profile_.
+2. **Apply Noise Reduction** (`ke(buffer, profile, strength, start, end)`) — User selects the target region and clicks _Apply Noise Reduction_ with a 0–100 % strength slider.
+
+**STFT setup** (shared by both stages, `Ce` / `we` constants):
+
+| Parameter | Value | Notes |
+|---|---|---|
+| FFT size | `2048` | ~46 ms @ 44.1 kHz |
+| Hop size | `512` | 75 % overlap |
+| Window | Hann (`Te(N)`) | Good leakage / main-lobe balance |
+| FFT impl | Iterative Cooley–Tukey, in-place (`Ee`); inverse via conjugate trick (`De`) |
+
+**Capture (`Oe`)**: For each STFT frame inside `[start, end)`, compute the power spectrum `|X[k]|² = real² + imag²`. Accumulate per-bin `mean(P)` and `mean(P²)` over all frames; derive `std(P) = √(mean(P²) − mean(P)²)`. The returned `Float32Array` has length `2·(N/2+1)` with layout `[mean₀…mean_{f−1} | std₀…std_{f−1}]`. The store keeps it in `FileData.noiseProfile`.
+
+**Apply (`ke`)**: For each frame and each bin `k`, compute a real-valued gain `g[k]` from the input power `P_x = |X[k]|²` and the per-bin noise-floor estimate `N[k] = mean[k] + K·std[k]` (both already in the power domain). Let `s = strength / 100 ∈ [0, 1]` be the user-facing _Strength_ slider normalized:
+
+```
+g[k] = max(β, (P_x − α · N[k] · s) / P_x)        if P_x > 1e-20
+g[k] = β                                          otherwise
+```
+
+`g[k]` is finally clamped to `[β, 1]`. The `1e-20` guard avoids division by zero on near-silent bins; on those bins the floor `β` is applied directly so a small residual is preserved (rather than producing a hard zero).
+
+The gain is then smoothed in two passes before being multiplied onto the complex spectrum (which preserves phase by construction):
+
+| Stage | Operation | Purpose |
+|---|---|---|
+| Frequency smoothing | 3-bin centered moving average over `g[k]` | Suppresses isolated bin spikes that cause "musical noise" |
+| Temporal smoothing | `g[k] ← γ·g_prev[k] + (1−γ)·g[k]` per frame | Avoids burble during steady noise; controls release tail |
+
+After applying gain, the upper half of the spectrum is rebuilt by Hermitian symmetry, IFFT runs, and the frame is written back via overlap-add weighted by the squared synthesis window. Edges within the selection cross-fade with the original signal over one FFT length to avoid hard boundaries.
+
+**Tuning parameters** (internal defaults, declared as `B`, `F`, `G`, `K` inside `ke`):
+
+| Symbol | Default | Meaning |
+|---|---|---|
+| `B` (α) | `2.0` | Oversubtraction factor |
+| `F` (β) | `0.05` | Spectral floor (≈ −13 dB minimum gain) |
+| `G` (γ) | `0.6`  | Temporal smoothing weight (decay rate) |
+| `K`     | `1.0` | Std multiplier when forming the noise-floor threshold |
+
+Inspired by Adobe Audition's spectral-subtraction parameter set (Spectral Decay Rate, Smoothing, Transition Width). The user-facing _Strength_ slider drives `s` as defined above; the table values are internal-only.
+
+**Backward compatibility**: If a profile of length `f` (old format, magnitudes only) is encountered, `ke` squares it to recover an approximate power spectrum and treats `std = 0`.
 
 ### Playback Engine
 
@@ -326,6 +375,9 @@ dd if=assets/index-wGz6QD6f.js bs=1 skip=OFFSET count=LENGTH 2>/dev/null
 - WAV encoder: `function ut(e,t){let n=e.numberOfChannels`
 - Help dialog: `Yt=()=>{let[e,t]=(0,y.useState)(!1)`
 - App root: `function $t(){`
+- FFT helpers / STFT constants: `var Ce=2048,we=512;function Te(e){`
+- Noise profile capture: `function Oe(e,t,n){let r=e.sampleRate`
+- Noise reduction apply: `function ke(e,t,n,r,i){let a=D()`
 
 ### Commit Convention
 
