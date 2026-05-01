@@ -158,7 +158,12 @@ Note: `audioBuffer._originalBitDepth` is set on WAV files at load time (8/16/24/
   srcQuality: "medium",        // "low", "medium", or "high"
   channels: "stereo",          // "mono" or "stereo"
   bitDepth: 24,                // 8, 16, 24, or 32 (WAV only)
-  bitrate: 192                 // 128, 192, 256, or 320 kbps (MP3 only)
+  bitrate: 192,                // 64-320 kbps (MP3 CBR only; ignored when vbr=true)
+  vbr: true,                   // true = VBR (default, recommended), false = CBR
+  vbrQuality: 2,               // 0 (~245kbps) - 9 (~65kbps) (MP3 VBR only)
+  mp3Mode: "joint",            // "joint" (default), "stereo" (independent L/R) (MP3 only; mono channels override to MONO mode)
+  lowpass: 18000,              // 0 = auto, or Hz cutoff (MP3 only). Lowers data spent on inaudible HF.
+  preset: "music_high"         // "music_high" / "music_small" / "voice" / "custom"
 }
 ```
 
@@ -240,7 +245,7 @@ After decoding, WAV files get `_originalBitDepth` from header byte offset 34.
 | Format | Function | Details |
 |--------|----------|---------|
 | WAV | `ut(audioBuffer, bitDepth)` | Writes RIFF/WAVE header + PCM data. 16-bit=PCM(1), 32-bit=Float(3) |
-| MP3 | `ft(audioBuffer, bitrate)` | Lame encoder with VBR support, quality levels 1-9 |
+| MP3 | `ft(audioBuffer, bitrate, opts)` | Lame encoder. `opts = { vbr, vbrQuality, mode, lowpass, quality }` — VBR (mtrh, q 0-9), MPEG mode (0=stereo, 1=joint, 3=mono), lowpass cutoff Hz, encoder quality 0-9 |
 
 Export flow (`j` callback):
 1. Get active file and resolve config (`exportConfig ?? defaults from file`)
