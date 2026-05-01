@@ -13,10 +13,11 @@ This value is hardcoded in `assets/index-wGz6QD6f.js` and **MUST be updated on e
    TZ=Asia/Tokyo date '+%Y-%m-%d %H:%M JST'
    ```
 
-2. Find the current value in the bundle (matches whatever branch is hardcoded):
+2. Find the current value in the bundle (matches the version banner format `` `claude/<branch>`,` | `,`YYYY-MM-DD HH:MM JST` ``):
    ```bash
-   grep -ao '.\{0,80\}JST.\{0,10\}' assets/index-wGz6QD6f.js | head -1
+   grep -aoE '`claude/[^`]+`,` \| `,`[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2} JST`' assets/index-wGz6QD6f.js
    ```
+   The `-a` flag is required (grep treats the bundle as binary otherwise). Don't loosen this to a bare `JST` match — other strings in the UI (logs, tooltips, etc.) may legitimately contain `JST` and you'll patch the wrong one.
 
 3. Update both the **branch name** and **timestamp** using `sed`:
    ```bash
