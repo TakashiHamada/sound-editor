@@ -249,8 +249,42 @@ Export flow (`j` callback):
 1. Get active file and resolve config (`exportConfig ?? defaults from file`)
 2. Resample if needed (`ye` function with quality setting)
 3. Convert channels if needed (`be` function: stereo to mono)
-4. Encode to WAV (`ut`) or MP3 (`ft`)
+4. Encode to WAV (`ut`) or MP3 (`ft`). For MP3, the export pipeline derives the LAME `mode` from `mp3Mode` (`joint`→1, `stereo`→0) and forces MONO(3) when `channels === "mono"` or the buffer is already 1-channel.
 5. Trigger download via blob URL (`pt` function)
+
+#### MP3 Encoding Options
+
+The lamejs `Mp3Encoder` constructor in this build was patched to accept a 4th `options` argument that is applied to `lame_global_flags` before `lame_init_params()`:
+
+| Option | Type | Default | Notes |
+|---|---|---|---|
+| `mode` | `0`/`1`/`2`/`3` | `STEREO(0)` | MPEG channel mode. `1` = Joint Stereo (MS encoding), `3` = Mono |
+| `lowpass` | Hz | unset (LAME auto) | If `>0`, sets `P.lowpassfreq`. Cuts inaudible HF so bits go to the audible band — improves perceived quality at fixed bitrate |
+| `quality` | `0`–`9` | `3` | LAME encoder algorithm quality. Pipeline passes `2` (high quality, slower) |
+
+VBR (`P.VBR = vbr_mtrh / vbr_rh / vbr_abr`) is **not** available — this lamejs JS port references `VBRNewIterationLoop` / `VBROldIterationLoop` / `ABRIterationLoop` constructors that were never defined in the bundle. Setting `P.VBR` to any non-zero value reaches `new <UndefinedClass>(C)` inside `lame_init_params` and throws `ReferenceError`. Only the CBR iteration loop (`g`) is implemented. Likewise `bWriteVbrTag` triggers `InitVbrTag` which has untranslated Java syntax (`new int[400]`) — also patched to `new Int32Array(400)` as a safety net but kept disabled.
+
+#### Presets
+
+The Export Settings modal exposes a `preset` selector that bulk-applies fields:
+
+| Preset | bitrate | channels | sampleRate | mp3Mode | lowpass | format |
+|---|---|---|---|---|---|---|
+| `music_high` | 192 kbps | stereo | (unchanged) | joint | 20 kHz | mp3 |
+| `music_small` | 128 kbps | stereo | (unchanged) | joint | 16 kHz | mp3 |
+| `voice` | 64 kbps | mono | 22050 Hz | joint | 15 kHz | mp3 |
+| `custom` | — | — | — | — | — | — |
+
+Editing any individual field in the modal automatically switches `preset` to `custom`.
+
+#### Size Estimators
+
+Both the Export Settings modal and the FilesPanel preview row share two helpers (defined right after `Wt`):
+
+- `en(config, duration)` — predicted output bytes. WAV uses `duration × sampleRate × channels × bitDepth/8 + 44`; MP3 uses `duration × bitrate × 1000 / 8` (CBR is exact since LAME pads to fixed bitrate).
+- `tn(audioBuffer, duration)` — source size as a 16-bit WAV equivalent at the buffer's native rate/channels. Used to display the compression ratio in the modal preview.
+
+Joint Stereo and Lowpass affect _quality_ at a given bitrate, not file size, so they intentionally do not change the estimator output. To shrink the file, reduce `bitrate` (or `channels`/`sampleRate`).
 
 ### Effects
 
