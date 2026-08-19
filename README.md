@@ -35,6 +35,7 @@ React component or state logic changes must be made directly to the minified bun
 +------------+-------------------------------+----------+----------+
 | Files (At) | Waveform Display (Ot)         | Effects  | [?]      |
 | - File list|   Canvas rendering            | (Nt)     | Help     |
+| (drop zone)|                               |          |          |
 | - File info|   Selection highlight         |          |          |
 | - Duration |   Playhead cursor             | VOLUME   |          |
 | - Rate/Ch  |   Drag & drop zone            |  Gain    |          |
@@ -243,14 +244,18 @@ After decoding, WAV files get `_originalBitDepth` from header byte offset 34.
 | Format | Function | Details |
 |--------|----------|---------|
 | WAV | `ut(audioBuffer, bitDepth)` | Writes RIFF/WAVE header + PCM data. 16-bit=PCM(1), 32-bit=Float(3) |
-| MP3 | `ft(audioBuffer, bitrate, opts)` | Lame encoder, CBR only. `opts = { mode, lowpass, quality }` — MPEG mode (0=stereo, 1=joint, 3=mono), lowpass cutoff Hz, encoder quality 0-9. (This lamejs build omits VBR iteration loops, so VBR is not available.) |
+| MP3 | `ft(audioBuffer, bitrate, opts)` | Lame encoder, CBR only. `opts = { mode, lowpass, quality }` — MPEG mode (0=stereo, 1=joint, 3=mono), lowpass cutoff Hz, encoder quality 0-9. (This lamejs build omits VBR iteration loops, so VBR is not available.) `ft` is `async`: the 1152-sample encode loop yields back to the event loop (via `setTimeout`) roughly every 30ms of wall-clock work and reports progress through `k.getState().setProcessing(...)` (see Processing Overlay Progress below), so callers must `await` it. |
 
 Export flow (`j` callback):
 1. Get active file and resolve config (`exportConfig ?? defaults from file`)
 2. Resample if needed (`ye` function with quality setting)
 3. Convert channels if needed (`be` function: stereo to mono)
-4. Encode to WAV (`ut`) or MP3 (`ft`). For MP3, the export pipeline derives the LAME `mode` from `mp3Mode` (`joint`→1, `stereo`→0) and forces MONO(3) when `channels === "mono"` or the buffer is already 1-channel.
+4. Encode to WAV (`ut`) or MP3 (`await ft(...)`). For MP3, the export pipeline derives the LAME `mode` from `mp3Mode` (`joint`→1, `stereo`→0) and forces MONO(3) when `channels === "mono"` or the buffer is already 1-channel.
 5. Trigger download via blob URL (`pt` function)
+
+#### Processing Overlay Progress
+
+`qt` (ProcessingModal) shows/hides based on the store's `processing` message (`k.getState().setProcessing(text | null)`), with a 500ms debounce before becoming visible so quick operations don't flash the overlay. That debounce is keyed on **whether a message is present** (`[!!e]`), not on the message text itself — an earlier version keyed it on `[e]`, which meant any operation that updates the message text on every tick (a live percentage) kept resetting the 500ms timer and the overlay never became visible. `ke` (noise reduction) and `ft` (MP3 export) both drive a live progress display through this same mechanism: every ~30ms of wall-clock work they call `setProcessing(`Label... ` + block-bar + ` NN%`)` (`█`/`░` characters, 20 segments) and `await new Promise(r=>setTimeout(r))` to yield. Follow this pattern for any other long-running synchronous loop that should show progress instead of freezing the tab.
 
 #### MP3 Encoding Options
 
@@ -384,7 +389,7 @@ BufferSource → [ChannelSplitter → AnalyserL/R → ChannelMerger] → GainNod
 | `F1` | Toggle help dialog |
 | Click | Set playhead |
 | Click+Drag | Select range |
-| Drag & Drop | Load audio file |
+| Drag & Drop | Load audio file (onto waveform view or Files panel) |
 
 ## Development Notes for AI Agents
 
