@@ -1,7 +1,7 @@
 // Left-hand panel: the list of open files (select, double-click to rename, close, drag & drop to
 // open more), plus a "File Info" section for the active file with its export buttons and the
 // predicted export size.
-import { useState, useRef, useMemo } from 'react';
+import { useState, useRef, useMemo, useEffect } from 'react';
 import { colors } from '../theme.js';
 import { formatTime, formatBytes } from '../utils/format.js';
 import { defaultExportConfig, estimateOutputBytes } from '../export/exportConfig.js';
@@ -144,6 +144,8 @@ export function FilesPanel({
   const [renamingId, setRenamingId] = useState(null);
   // Which rename input is open: 'list' (file list row) or 'info' (File Info header).
   const [renameSource, setRenameSource] = useState('list');
+  const renameSourceRef = useRef(renameSource);
+  renameSourceRef.current = renameSource;
   const [renameText, setRenameText] = useState('');
   const [hoveredCloseId, setHoveredCloseId] = useState(null);
   const [dragOver, setDragOver] = useState(false);
@@ -176,6 +178,12 @@ export function FilesPanel({
       setRenamingId(id);
     }, 50);
   };
+
+  // The File Info rename edits the active file; if another file becomes active (e.g. a dropped
+  // file finishes loading) the rename is abandoned rather than left hidden with stale text.
+  useEffect(() => {
+    setRenamingId((id) => (id !== null && renameSourceRef.current === 'info' ? null : id));
+  }, [activeFileId]);
 
   const commitRename = (reason) => {
     if (reason === 'blur' && Date.now() - renameStartedAtRef.current < 200) return;
@@ -270,6 +278,8 @@ export function FilesPanel({
                     }}
                     autoFocus={true}
                     onClick={(e) => e.stopPropagation()}
+                    // Double-click selects a word; it must not restart the rename.
+                    onDoubleClick={(e) => e.stopPropagation()}
                   />
                 ) : (
                   <span style={styles.fileName} title={file.fileName}>
@@ -322,6 +332,7 @@ export function FilesPanel({
                       if (e.key === 'Enter') commitRename('enter');
                       else if (e.key === 'Escape') setRenamingId(null);
                     }}
+                    onDoubleClick={(e) => e.stopPropagation()}
                     style={styles.renameInput}
                   />
                 ) : (

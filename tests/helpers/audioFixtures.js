@@ -92,3 +92,51 @@ export function parseMp3Header(buf) {
   }
   return null;
 }
+
+/**
+ * Build a 32-bit float WAV from per-channel sample arrays (values in -1..1).
+ * @param {Float32Array[]} channels
+ * @param {number} sampleRate
+ */
+export function makeFloatWav(channels, sampleRate = 44100) {
+  const frames = channels[0].length;
+  const dataSize = frames * channels.length * 4;
+  const buf = Buffer.alloc(44 + dataSize);
+  buf.write('RIFF', 0);
+  buf.writeUInt32LE(36 + dataSize, 4);
+  buf.write('WAVE', 8);
+  buf.write('fmt ', 12);
+  buf.writeUInt32LE(16, 16);
+  buf.writeUInt16LE(3, 20);
+  buf.writeUInt16LE(channels.length, 22);
+  buf.writeUInt32LE(sampleRate, 24);
+  buf.writeUInt32LE(sampleRate * channels.length * 4, 28);
+  buf.writeUInt16LE(channels.length * 4, 32);
+  buf.writeUInt16LE(32, 34);
+  buf.write('data', 36);
+  buf.writeUInt32LE(dataSize, 40);
+  let offset = 44;
+  for (let i = 0; i < frames; i++)
+    for (const channel of channels) {
+      buf.writeFloatLE(channel[i], offset);
+      offset += 4;
+    }
+  return buf;
+}
+
+/** Deterministic pseudo-random numbers in [-0.5, 0.5). */
+export function seededNoise(seed = 1) {
+  let state = seed;
+  return () => {
+    state = (state * 1103515245 + 12345) % 2147483648;
+    return state / 2147483648 - 0.5;
+  };
+}
+
+/** Peak absolute sample value of a 32-bit float WAV produced by the app. */
+export function floatWavPeak(buf) {
+  let peak = 0;
+  for (let offset = 44; offset + 4 <= buf.length; offset += 4)
+    peak = Math.max(peak, Math.abs(buf.readFloatLE(offset)));
+  return peak;
+}

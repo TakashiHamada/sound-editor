@@ -15,6 +15,26 @@ function updateFile(files, id, patch) {
   return nextFiles;
 }
 
+// State for `file` after its audio is replaced by `audioBuffer`: the selection and playhead are
+// clamped into the new duration (a selection that falls entirely outside it is dropped).
+function withRestoredBuffer(file, audioBuffer, historyIndex) {
+  const duration = audioBuffer.duration;
+  const clamp = (time) => Math.max(0, Math.min(duration, time));
+  let { selectionStart, selectionEnd } = file;
+  if (selectionStart !== null && selectionEnd !== null) {
+    selectionStart = clamp(selectionStart);
+    selectionEnd = clamp(selectionEnd);
+    if (selectionStart === selectionEnd) selectionStart = selectionEnd = null;
+  }
+  return {
+    audioBuffer,
+    historyIndex,
+    selectionStart,
+    selectionEnd,
+    currentTime: clamp(file.currentTime),
+  };
+}
+
 export const useEditorStore = create((set, get) => ({
   files: new Map(),
   activeFileId: null,
@@ -183,11 +203,13 @@ export const useEditorStore = create((set, get) => ({
     if (!activeFileId) return;
     const file = files.get(activeFileId);
     if (!file || file.historyIndex <= 0) return;
+    const restored = cloneAudioBuffer(getAudioContext(), file.history[file.historyIndex - 1]);
     set({
-      files: updateFile(files, activeFileId, {
-        audioBuffer: cloneAudioBuffer(getAudioContext(), file.history[file.historyIndex - 1]),
-        historyIndex: file.historyIndex - 1,
-      }),
+      files: updateFile(
+        files,
+        activeFileId,
+        withRestoredBuffer(file, restored, file.historyIndex - 1),
+      ),
     });
   },
 
@@ -196,22 +218,14 @@ export const useEditorStore = create((set, get) => ({
     if (!activeFileId) return;
     const file = files.get(activeFileId);
     if (!file || file.historyIndex >= file.history.length - 1) return;
+    const restored = cloneAudioBuffer(getAudioContext(), file.history[file.historyIndex + 1]);
     set({
-      files: updateFile(files, activeFileId, {
-        audioBuffer: cloneAudioBuffer(getAudioContext(), file.history[file.historyIndex + 1]),
-        historyIndex: file.historyIndex + 1,
-      }),
+      files: updateFile(
+        files,
+        activeFileId,
+        withRestoredBuffer(file, restored, file.historyIndex + 1),
+      ),
     });
-  },
-
-  canUndo: () => {
-    const file = get().getActiveFile();
-    return file !== null && file.historyIndex > 0;
-  },
-
-  canRedo: () => {
-    const file = get().getActiveFile();
-    return file !== null && file.historyIndex < file.history.length - 1;
   },
 
   getActiveFile: () => {

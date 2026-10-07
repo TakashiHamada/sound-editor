@@ -93,21 +93,26 @@ function decodeWithMediaElement(file) {
     const objectUrl = URL.createObjectURL(file);
     audio.src = objectUrl;
     audio.preload = 'auto';
+    const handleError = () => {
+      clearTimeout(timeoutId);
+      const code = audio.error?.code;
+      const message = audio.error?.message ?? 'unknown';
+      cleanup();
+      reject(new Error(`<audio> error: code=${code}, ${message}`));
+    };
+    // Detach the element from the file. The error listener goes first: releasing the source
+    // makes the element fire another 'error', which would otherwise re-enter cleanup forever.
     const cleanup = () => {
+      audio.removeEventListener('error', handleError);
       URL.revokeObjectURL(objectUrl);
-      audio.src = '';
+      audio.removeAttribute('src');
+      audio.load();
     };
     const timeoutId = setTimeout(() => {
       cleanup();
       reject(new Error('Media element decode timed out after 30s'));
     }, 30000);
-    audio.addEventListener('error', () => {
-      clearTimeout(timeoutId);
-      cleanup();
-      const code = audio.error?.code;
-      const message = audio.error?.message ?? 'unknown';
-      reject(new Error(`<audio> error: code=${code}, ${message}`));
-    });
+    audio.addEventListener('error', handleError);
     audio.addEventListener(
       'canplaythrough',
       () => {

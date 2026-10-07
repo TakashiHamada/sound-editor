@@ -37,6 +37,15 @@ export function togglePlayback() {
   state.setPlaying(true);
 }
 
+// Stops playback without moving the playhead (e.g. when another file becomes active, so the old
+// file's playback cannot drive the new file's playhead).
+export function stopIfPlaying() {
+  const state = useEditorStore.getState();
+  if (!state.isPlaying) return;
+  stopPlayback();
+  state.setPlaying(false);
+}
+
 export function stopAndRewind() {
   stopPlayback();
   const state = useEditorStore.getState();

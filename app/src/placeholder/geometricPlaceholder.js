@@ -42,10 +42,12 @@ function polygon(pts, color, sw) {
   });
 }
 
-function regularPoints(n, r, offset) {
+// Points of a regular n-gon of radius r around (50, 50); the first vertex sits at `offset`
+// degrees (default -90°, i.e. pointing up).
+function regularPoints(n, r, offset = -90) {
   const pts = [];
   for (let i = 0; i < n; i++) {
-    const a = (((i * 360) / n + (offset || -90)) * Math.PI) / 180;
+    const a = (((i * 360) / n + offset) * Math.PI) / 180;
     pts.push((50 + r * Math.cos(a)).toFixed(1) + ',' + (50 + r * Math.sin(a)).toFixed(1));
   }
   return pts.join(' ');
@@ -94,7 +96,7 @@ function createHexRosette(size, color) {
       ),
     );
   }
-  svg.appendChild(polygon(regularPoints(6, 16, 0), color, '1'));
+  svg.appendChild(polygon(regularPoints(6, 16), color, '1'));
   return svg;
 }
 
@@ -144,8 +146,7 @@ function buildGrid(container) {
 
 // --- Initialization & visibility detection ---
 
-// Find the waveform container by structural layout:
-// the largest canvas's parent with border-radius (waveform panel).
+// The waveform container is the parent of the largest <canvas> (by backing-store area) in #root.
 function findWaveformContainer() {
   let best = null;
   let bestArea = 0;
@@ -161,9 +162,7 @@ function findWaveformContainer() {
   return best ? best.parentElement : null;
 }
 
-// Check for empty-state indicator in the file panel.
-// The React app renders a div with "No file loaded" + "Ctrl+O or drag & drop"
-// when no files are open. We target this specific two-child structure.
+// FilesPanel shows a <span> reading exactly "Ctrl+O or drag & drop" while no file is open.
 function findEmptyStateNode() {
   const spans = document.querySelectorAll('#root span');
   for (let i = 0; i < spans.length; i++) {

@@ -159,13 +159,7 @@ export function StatusBar({
   const hasSelection =
     selectionStart !== null && selectionEnd !== null && selectionStart !== selectionEnd;
   const selectionLength = hasSelection ? Math.abs(selectionEnd - selectionStart) : 0;
-  const [lastLog, setLastLog] = useState(null);
   const [flashMessage, setFlashMessage] = useState(null);
-  // Remember the most recent log entry (an empty message keeps the previous one shown).
-  useEffect(() => {
-    if (!logMessage) return;
-    setLastLog(logMessage);
-  }, [logMessage]);
   // The "Copied to clipboard" flash replaces the log text for 2 seconds.
   useEffect(() => {
     if (!flashMessage) return;
@@ -182,14 +176,14 @@ export function StatusBar({
           overflow: 'hidden',
           textOverflow: 'ellipsis',
           whiteSpace: 'nowrap',
-          cursor: lastLog ? 'pointer' : 'default',
-          color: lastLog ? (lastLog.level === 'error' ? '#f44336' : '#4caf50') : '#555',
+          cursor: logMessage ? 'pointer' : 'default',
+          color: logMessage ? (logMessage.level === 'error' ? '#f44336' : '#4caf50') : '#555',
         }}
-        title={lastLog ? 'Click to copy details' : null}
+        title={logMessage ? 'Click to copy details' : null}
         onClick={() => {
-          if (!lastLog) return;
+          if (!logMessage) return;
           // The Clipboard API is missing in insecure contexts and may reject (permissions).
-          const copy = navigator.clipboard?.writeText(lastLog.detail);
+          const copy = navigator.clipboard?.writeText(logMessage.detail);
           if (!copy) setFlashMessage('Copy not available');
           else
             copy.then(
@@ -200,10 +194,10 @@ export function StatusBar({
       >
         {flashMessage ? (
           flashMessage
-        ) : lastLog ? (
+        ) : logMessage ? (
           <>
-            {lastLog.level === 'error' ? '✘ ' : '✔ '}
-            {lastLog.text}
+            {logMessage.level === 'error' ? '✘ ' : '✔ '}
+            {logMessage.text}
           </>
         ) : (
           'No log'

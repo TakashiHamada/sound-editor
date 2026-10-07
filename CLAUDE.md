@@ -17,13 +17,13 @@
 
 ## Gotcha: lamejs VBR is not implemented in this build
 
-The bundled lamejs port references `VBRNewIterationLoop` / `VBROldIterationLoop` / `ABRIterationLoop` constructors that are **never defined**. Setting `P.VBR` to anything other than `vbr_off`, or enabling `P.bWriteVbrTag`, will throw `ReferenceError` from inside `lame_init_params` / `InitVbrTag`. MP3 export is **CBR only**.
+The bundled lamejs port references `VBRNewIterationLoop` / `VBROldIterationLoop` / `ABRIterationLoop` constructors that are **never defined**. Setting `P.VBR` to anything other than `vbr_off`, or enabling `P.bWriteVbrTag`, will fail: VBR modes throw `ReferenceError` inside `lame_init_params`, and `InitVbrTag` throws `TypeError: e.BitrateIndex is not a function`. MP3 export is **CBR only**.
 
 Before adding any VBR-style feature, swap the encoder for a build that actually ships the VBR loops (e.g. a WASM libmp3lame, or `@breezystack/lamejs`). Don't try to wire `P.VBR` to the existing constructor — it will look like it works in code review and crash at runtime. See `README.md` § _MP3 encoding options_.
 
 ## Gotcha: keep the two output-size estimators in sync
 
-The Export Settings modal and the FilesPanel "Preview" row both call `estimateOutputBytes` / `estimateSourceBytes` from `app/src/export/exportConfig.js`. Change the helper, not a component, so both stay consistent.
+The Export Settings modal and the FilesPanel "Preview" row both call `estimateOutputBytes` from `app/src/export/exportConfig.js` (the modal also uses `estimateSourceBytes` for the compression ratio). Change the helper, not a component, so both stay consistent.
 
 ## Gotcha: normalize export configs through `normalizeExportConfig`
 

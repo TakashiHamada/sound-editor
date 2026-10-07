@@ -1,9 +1,9 @@
 // Root component: lays out toolbar, files panel, waveform, effects panel, status bar and modals,
 // wires them to the store and the module-level actions, and installs the keyboard shortcuts.
-import { useState, useRef, useCallback, useMemo } from 'react';
+import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import { useEditorStore } from './store/editorStore.js';
 import { loadFiles, closeFile, closeAllFiles } from './actions/fileActions.js';
-import { togglePlayback, stopAndRewind } from './actions/playbackActions.js';
+import { togglePlayback, stopAndRewind, stopIfPlaying } from './actions/playbackActions.js';
 import {
   undo,
   redo,
@@ -80,7 +80,14 @@ export function App() {
       // The actions are module-level functions; only the file-picker callback is component state.
       [openFilePicker],
     ),
+    // Modal dialogs own the keyboard while open.
+    !isSettingsOpen,
   );
+  // Playback belongs to the file that started it: switching, loading or closing files stops it.
+  const activeFileId = state.activeFileId;
+  useEffect(() => {
+    stopIfPlaying();
+  }, [activeFileId]);
   const hasAudio = !!activeFile;
   const hasSelection = activeFile
     ? activeFile.selectionStart !== null && activeFile.selectionEnd !== null

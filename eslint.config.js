@@ -4,7 +4,15 @@ import globals from 'globals';
 
 export default [
   {
-    ignores: ['assets/**', 'index.html', 'app/src/vendor/**', 'node_modules/**', 'test-results/**'],
+    ignores: [
+      'assets/**',
+      'index.html',
+      'app/src/vendor/**',
+      'node_modules/**',
+      'test-results/**',
+      'dist/**',
+      'app/dist/**',
+    ],
   },
   js.configs.recommended,
   {

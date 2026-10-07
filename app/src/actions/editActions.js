@@ -114,14 +114,14 @@ export function selectAll() {
   if (activeFile) state.setSelection(0, activeFile.audioBuffer.duration);
 }
 
-// Applies a linear gain factor to the selection (when `selectionOnly` and a selection exists)
-// or to the whole file.
 // "+6.0 dB" / "-3.5 dB" for a linear gain factor.
 function formatGainDb(gain) {
   const db = 20 * Math.log10(gain);
   return `${db >= 0 ? '+' : '-'}${Math.abs(db).toFixed(1)} dB`;
 }
 
+// Applies a linear gain factor to the selection (when `selectionOnly` and a selection exists)
+// or to the whole file.
 export function adjustVolume(gain, selectionOnly) {
   const activeFile = useEditorStore.getState().getActiveFile();
   if (activeFile) {
@@ -199,15 +199,30 @@ export async function applyNoiseReductionWithStrength(strength) {
   await runWithProcessing('Applying noise reduction...', async () => {
     const activeFile = useEditorStore.getState().getActiveFile();
     if (!activeFile || !activeFile.noiseProfile) return;
-    commitEdit(
-      await applyNoiseReduction(
+    let result;
+    try {
+      result = await applyNoiseReduction(
         activeFile.audioBuffer,
         activeFile.noiseProfile,
         strength,
         activeFile.selectionStart ?? undefined,
         activeFile.selectionEnd ?? undefined,
-      ),
-    );
+      );
+    } catch (error) {
+      useEditorStore
+        .getState()
+        .log('Noise reduction failed', 'error', `Noise reduction failed: ${error.message}`);
+      return;
+    }
+    // The task yields while it runs; only commit if the same audio is still being edited.
+    const current = useEditorStore.getState().getActiveFile();
+    if (current?.id !== activeFile.id || current.audioBuffer !== activeFile.audioBuffer) {
+      useEditorStore
+        .getState()
+        .log('Noise reduction discarded', 'error', 'The audio changed while noise reduction ran');
+      return;
+    }
+    commitEdit(result);
     useEditorStore.getState().log(`Noise reduction applied (strength: ${strength})`);
   });
 }

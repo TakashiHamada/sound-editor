@@ -1,18 +1,18 @@
-// Full-screen blocking overlay shown while a long operation runs. It swallows clicks/keys
-// immediately, but only dims the screen and shows the message + indeterminate progress bar after
-// the operation has lasted 500 ms (so quick operations don't flash a dialog).
+// Full-screen overlay shown while a long operation runs. It blocks pointer input immediately
+// (keyboard shortcuts are suspended by useKeyboardShortcuts while `processing` is set), but only
+// dims the screen and shows the message + progress bar once the operation has lasted 500 ms, so
+// quick operations don't flash a dialog.
 
 import { useState, useEffect } from 'react';
 
-// Keyframes for the indeterminate progress bar (rendered inside a <style> element; the exact
-// whitespace is part of the rendered DOM).
+// Keyframes for the indeterminate progress bar (rendered inside a <style> element).
 const PROCESSING_BAR_KEYFRAMES = `
-            @keyframes processing-bar {
-              0% { transform: translateX(-100%); }
-              50% { transform: translateX(250%); }
-              100% { transform: translateX(-100%); }
-            }
-          `;
+  @keyframes processing-bar {
+    0% { transform: translateX(-100%); }
+    50% { transform: translateX(250%); }
+    100% { transform: translateX(-100%); }
+  }
+`;
 
 export function ProcessingModal({ message }) {
   const [isDialogVisible, setIsDialogVisible] = useState(false);
@@ -41,7 +41,6 @@ export function ProcessingModal({ message }) {
         transition: 'background-color 0.2s',
       }}
       onClick={(event) => event.stopPropagation()}
-      onKeyDown={(event) => event.stopPropagation()}
     >
       {isDialogVisible && (
         <div

@@ -13,7 +13,7 @@ npm run test:build   # build, then test
 npm run format       # Prettier over app/src and tests
 ```
 
-Node 20+ is required. Playwright uses the Chromium that `npx playwright install chromium` provides (preinstalled in Claude Code cloud sessions).
+Node `^20.19` or `>=22.13` is required (see `engines` in `package.json`). Playwright uses the Chromium that `npx playwright install chromium` provides (preinstalled in Claude Code cloud sessions).
 
 ## Repository layout
 
@@ -76,7 +76,8 @@ The top-right corner shows `<branch> | <YYYY-MM-DD HH:MM JST>`. `vite.config.js`
 | `main.jsx` | Entry: starts the empty-state placeholder, mounts `<App/>` in `StrictMode` |
 | `App.jsx` | Layout and wiring: subscribes to the store, passes state/actions to panels, installs keyboard shortcuts |
 | `version.js` | Build-time branch / JST timestamp for the banner |
-| `theme.js` | Shared colors, fonts, sizes |
+| `theme.js` | Shared color palette |
+| `utils/format.js` | `formatTime` (`MM:SS.mmm`) and `formatBytes` |
 | **store/** `editorStore.js` | zustand store: files, selection, zoom/scroll, playhead, undo history, clipboard, export config, log, processing overlay |
 | **actions/** | Plain functions behind toolbar buttons / shortcuts, reading and writing the store |
 | `fileActions.js` | `loadFiles` (decode + WAV header metadata), `closeFile`, `closeAllFiles` |
@@ -105,7 +106,7 @@ The top-right corner shows `<branch> | <YYYY-MM-DD HH:MM JST>`. `vite.config.js`
 | **placeholder/** | framework-free animated geometric motifs shown in the empty waveform area |
 | **vendor/** `lamejs.js` | patched MP3 encoder — do not reformat; see header comment |
 
-Dependencies: `components` → `actions` / `selection` / `store`; `actions` → `store`, `audio`, `export`; `store` → `audio` (buffer cloning). `audio/` and `export/` contain no React; only the long-running loops (`noiseReduction.js`, `mp3Encoder.js`) and the export pipeline talk to the store, to report progress and results.
+Dependencies (who imports whom): `App` → `components`, `actions`, `hooks`, `store`; `components` → `store`, `selection`, `theme`, `utils`, plus `export/exportConfig.js` (settings modal, size preview) and `audio/playback.js` (level meter); `hooks` → `selection`, `store`; `actions` / `selection` → `store`, `audio`, `export`; `store` → `audio` (buffer cloning). `audio/` and `export/` contain no React; only the long-running loops (`noiseReduction.js`, `mp3Encoder.js`) and the export pipeline talk to the store, to report progress and results.
 
 ### Geometric placeholder (`placeholder/`)
 
@@ -159,7 +160,7 @@ If you change the empty-state text in `FilesPanel`, update `findEmptyStateNode()
 
 WAV files get `audioBuffer._originalBitDepth` (8/16/24/32), `_originalSampleRate`, `_originalChannels` and `_originalFileSize` at load time. Edits create new `AudioBuffer`s, so `copyOriginalMeta(src, dst)` carries these fields forward in `setAudioBuffer`, `pushHistory` and `cloneAudioBuffer` — otherwise the first edit would silently drop them and the default export would fall back to the AudioContext rate / 24-bit.
 
-`setSelection` and `setCurrentTime` clamp their inputs to `[0, duration]` of the active file.
+`setSelection` and `setCurrentTime` clamp their inputs to `[0, duration]` of the active file, and `undo` / `redo` clamp the selection and playhead into the restored audio (a selection left entirely outside it is dropped).
 
 ### Actions
 
@@ -247,14 +248,14 @@ The vendored lamejs `Mp3Encoder(channels, sampleRate, kbps, options)` is patched
 
 It also pins `out_samplerate` to the input rate when that is a legal MPEG rate; otherwise LAME's `optimum_samplefreq()` silently drops 44.1/48 kHz to 32 kHz whenever lowpass ≤ 15.25 kHz. This build's `assert` is a no-op, so a failing `lame_init_params()` does not throw — keep feeding it legal rates.
 
-VBR is **not** available: the port references `VBRNewIterationLoop` / `VBROldIterationLoop` / `ABRIterationLoop`, which were never defined, so any non-CBR mode throws `ReferenceError` inside `lame_init_params`. `bWriteVbrTag` likewise stays disabled. To add VBR, swap the encoder (e.g. a WASM libmp3lame or `@breezystack/lamejs`).
+VBR is **not** available: the port references `VBRNewIterationLoop` / `VBROldIterationLoop` / `ABRIterationLoop`, which were never defined, so any non-CBR mode throws `ReferenceError` inside `lame_init_params`. `bWriteVbrTag` must stay disabled too: `InitVbrTag` fails with `TypeError: e.BitrateIndex is not a function`. To add VBR, swap the encoder (e.g. a WASM libmp3lame or `@breezystack/lamejs`).
 
 #### Presets
 
 | Preset | bitrate | channels | sampleRate | mp3Mode | lowpass | format |
 |---|---|---|---|---|---|---|
-| `music_high` | 192 kbps | stereo | unchanged (44.1 kHz if currently < 32 kHz) | joint | 20 kHz | mp3 |
-| `music_small` | 128 kbps | stereo | unchanged (44.1 kHz if currently < 32 kHz) | joint | 16 kHz | mp3 |
+| `music_high` | 192 kbps | stereo | nearest legal MPEG rate (44.1 kHz if currently < 32 kHz) | joint | 20 kHz | mp3 |
+| `music_small` | 128 kbps | stereo | nearest legal MPEG rate (44.1 kHz if currently < 32 kHz) | joint | 16 kHz | mp3 |
 | `voice` | 64 kbps | mono | 22050 Hz | joint | 15 kHz | mp3 |
 | `custom` | — | — | — | — | — | — |
 
@@ -265,7 +266,7 @@ Editing any individual field switches `preset` to `custom`. The modal lists only
 Both the settings modal and the FilesPanel "Preview" row use `export/exportConfig.js`:
 
 - `estimateOutputBytes(config, duration)` — on the normalized config. WAV: `duration × sampleRate × channels × bitDepth/8 + 44`; MP3: `duration × bitrate × 1000 / 8` (exact for CBR).
-- `estimateSourceBytes(audioBuffer, duration)` — source as 16-bit WAV, for the compression ratio.
+- `estimateSourceBytes(audioBuffer, duration)` — source as 16-bit WAV; only the settings modal uses it, for the compression ratio.
 
 Joint Stereo and Lowpass change quality, not size.
 
@@ -291,7 +292,7 @@ Joint Stereo and Lowpass change quality, not size.
 
 **Capture**: for each frame, power spectrum `|X[k]|²`; accumulate per-bin `mean(P)` and `mean(P²)`; `std(P) = √(mean(P²) − mean(P)²)`. Result: `Float32Array` of length `2·(N/2+1)` laid out `[mean… | std…]`, stored in `FileData.noiseProfile`.
 
-**Apply**: per frame and bin, with `N[k] = mean[k] + K·std[k]` and `s = strength / 100`:
+**Apply**: per frame and bin, with `N[k] = mean[k] + K·std[k]` and `s = strength` (0–1; `EffectsPanel` divides the slider's 0–100 % by 100 before calling):
 
 ```
 g[k] = max(β, (P_x − α · N[k] · s) / P_x)        if P_x > 1e-20
@@ -307,13 +308,15 @@ clamped to `[β, 1]`, then smoothed across frequency (3-bin moving average) and 
 | γ | `0.6` | Temporal smoothing weight |
 | K | `1.0` | Std multiplier in the noise floor |
 
-Old magnitude-only profiles (length `N/2+1`) are squared into power with `std = 0`.
+Frames start one window before the selection (reading the neighbouring audio, zeros beyond the buffer) so every selected sample gets the full overlap; the result is cross-faded in from the selection start and out towards its end, so selections shorter than one frame are processed too (gently).
 
 ### Playback engine (`audio/playback.js`)
 
 - `startPlayback(buffer, offset, duration, onTime, onEnded)` — start (offset clamped into the buffer)
 - `stopPlayback()` — stop and disconnect all nodes
 - `getLevels()` — peak levels for the meter
+
+Playback belongs to the file that started it: `App` stops it whenever the active file changes (switching, loading or closing files).
 
 ```
 BufferSource → [ChannelSplitter → AnalyserL/R → ChannelMerger] → GainNode → Destination
@@ -348,7 +351,7 @@ BufferSource → [ChannelSplitter → AnalyserL/R → ChannelMerger] → GainNod
 | Click / Click+Drag / Drag an edge | Seek / select / adjust selection |
 | Drag & Drop | Load audio files (waveform or Files panel) |
 
-Shortcuts are ignored while focus is in an `input`, `textarea` or `select`.
+Shortcuts are ignored while focus is in an `input`, `textarea` or `select`, while the Export Settings dialog is open, and while a long task (export, paste, noise reduction) shows the processing overlay. Letter shortcuts are case-insensitive (Caps Lock safe); `Shift` distinguishes redo.
 
 ## Testing
 

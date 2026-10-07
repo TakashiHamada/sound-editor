@@ -121,20 +121,27 @@ export async function applyNoiseReduction(audioBuffer, noiseProfile, strength, s
   const GAIN_FLOOR = 0.05; // minimum per-bin gain (limits "musical noise")
   const TEMPORAL_SMOOTHING = 0.6; // weight of the previous frame's gain
   const STD_DEV_WEIGHT = 1; // how many std-devs above the mean the noise floor sits
-  // Newer profiles hold [mean power, std-dev]; older ones hold magnitudes only.
-  const hasStdDev = noiseProfile.length >= 2 * binCount;
+  // The profile (from captureNoiseProfile) holds [mean power per bin | std-dev per bin].
   const noiseFloor = new Float32Array(binCount);
   const real = new Float32Array(FFT_SIZE);
   const imag = new Float32Array(FFT_SIZE);
   const gains = new Float32Array(binCount);
   const smoothedGains = new Float32Array(binCount);
   for (let bin = 0; bin < binCount; bin++) {
-    const meanPower = hasStdDev ? noiseProfile[bin] : noiseProfile[bin] * noiseProfile[bin];
-    const stdDev = hasStdDev ? noiseProfile[binCount + bin] : 0;
-    noiseFloor[bin] = meanPower + STD_DEV_WEIGHT * stdDev;
+    noiseFloor[bin] = noiseProfile[bin] + STD_DEV_WEIGHT * noiseProfile[binCount + bin];
   }
+  const regionLength = endSample - startSample;
+  if (regionLength <= 0) {
+    for (let channel = 0; channel < audioBuffer.numberOfChannels; channel++)
+      output.getChannelData(channel).set(audioBuffer.getChannelData(channel));
+    return output;
+  }
+  // Frames start one window (minus a hop) before the region and run past its end, reading real
+  // neighbouring audio (zeros beyond the buffer). Every sample of the region is then covered by
+  // the full overlap, so the window-sum normalisation never divides by a near-zero value.
+  const firstFrameStart = startSample - FFT_SIZE + HOP_SIZE;
   let framesPerChannel = 0;
-  for (let frameStart = startSample; frameStart + FFT_SIZE <= endSample; frameStart += HOP_SIZE)
+  for (let frameStart = firstFrameStart; frameStart < endSample; frameStart += HOP_SIZE)
     framesPerChannel++;
   const totalFrames = Math.max(1, framesPerChannel * audioBuffer.numberOfChannels);
   let doneFrames = 0;
@@ -143,15 +150,15 @@ export async function applyNoiseReduction(audioBuffer, noiseProfile, strength, s
     const input = audioBuffer.getChannelData(channel);
     const outputData = output.getChannelData(channel);
     outputData.set(input);
-    const regionLength = endSample - startSample;
     const overlapSum = new Float32Array(regionLength);
     const windowSum = new Float32Array(regionLength);
     const previousGains = new Float32Array(binCount);
     for (let bin = 0; bin < binCount; bin++) previousGains[bin] = 1;
-    for (let frameStart = startSample; frameStart + FFT_SIZE <= endSample; frameStart += HOP_SIZE) {
+    for (let frameStart = firstFrameStart; frameStart < endSample; frameStart += HOP_SIZE) {
       const regionOffset = frameStart - startSample;
       for (let i = 0; i < FFT_SIZE; i++) {
-        real[i] = input[frameStart + i] * hann[i];
+        const source = frameStart + i;
+        real[i] = source >= 0 && source < input.length ? input[source] * hann[i] : 0;
         imag[i] = 0;
       }
       fft(real, imag);
@@ -185,7 +192,7 @@ export async function applyNoiseReduction(audioBuffer, noiseProfile, strength, s
       // Windowed overlap-add.
       for (let i = 0; i < FFT_SIZE; i++) {
         const target = regionOffset + i;
-        if (target < regionLength) {
+        if (target >= 0 && target < regionLength) {
           overlapSum[target] += real[i] * hann[i];
           windowSum[target] += hann[i] * hann[i];
         }
@@ -214,11 +221,12 @@ export async function applyNoiseReduction(audioBuffer, noiseProfile, strength, s
       if (windowSum[i] > 1e-8) {
         const processed = overlapSum[i] / windowSum[i];
         const original = input[startSample + i];
-        let mix = 1;
-        if (i < crossfadeLength) mix = i / crossfadeLength;
-        else if (i >= regionLength - crossfadeLength)
-          mix = (regionLength - 1 - i) / crossfadeLength;
-        mix = Math.max(0, Math.min(1, mix));
+        // Ramps in from the region start and out towards its end (independently, so short
+        // regions fade both ways).
+        const mix = Math.max(
+          0,
+          Math.min(1, i / crossfadeLength, (regionLength - 1 - i) / crossfadeLength),
+        );
         outputData[startSample + i] = original * (1 - mix) + processed * mix;
       }
   }

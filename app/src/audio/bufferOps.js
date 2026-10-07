@@ -49,11 +49,10 @@ export function deleteRange(buffer, startTime, endTime) {
 }
 
 // Multiplies samples in `startTime`..`endTime` (whole buffer when omitted) by `gain`,
-// clamped to 0..3 (i.e. at most about +9.5 dB).
+// clamped to 0..10 (the volume slider's full -20..+20 dB range).
 export function applyGain(buffer, gain, startTime, endTime) {
   const context = getAudioContext();
   const sampleRate = buffer.sampleRate;
-  // 0..10 covers the volume slider's -20..+20 dB range.
   const clampedGain = Math.max(0, Math.min(10, gain));
   const startSample = startTime === undefined ? 0 : Math.max(0, Math.floor(startTime * sampleRate));
   const endSample =

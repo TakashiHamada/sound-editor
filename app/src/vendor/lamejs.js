@@ -16,7 +16,8 @@
  *   - `InitVbrTag`'s untranslated `new int[400]` replaced with `new Int32Array(400)`.
  *
  * Known limitations (see CLAUDE.md): VBR iteration loops are never defined, so
- * VBR / bWriteVbrTag throw ReferenceError — CBR only. Several unreachable code
+ * VBR modes throw ReferenceError, and bWriteVbrTag fails in InitVbrTag with a
+ * TypeError (e.BitrateIndex is not a function) — CBR only. Several unreachable code
  * paths reference undefined identifiers; they are left as-is. `assert` is a no-op,
  * so a failing lame_init_params() does not throw.
  *
