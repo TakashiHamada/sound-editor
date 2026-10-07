@@ -58,11 +58,11 @@ export const useEditorStore = create((set, get) => ({
     if (!state.files.has(id)) return;
     const files = new Map(state.files);
     files.delete(id);
-    let activeFileId = null;
-    if (state.activeFileId === id) {
+    let activeFileId = state.activeFileId;
+    if (activeFileId === id) {
       const first = files.keys().next();
       activeFileId = first.done ? null : first.value;
-    } else activeFileId = state.activeFileId;
+    }
     set({ files, activeFileId });
   },
 

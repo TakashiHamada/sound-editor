@@ -39,6 +39,8 @@ export function ExportSettingsModal({
   // Reset the draft from the saved config (or the file's defaults) whenever the modal opens.
   useEffect(() => {
     if (isOpen) setDraft({ ...(exportConfig ?? defaultExportConfig(audioBuffer, fileName)) });
+    // The buffer cannot change while the modal is open (it blocks the editor), so it is not a dep.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, fileName, exportConfig]);
 
   const sourceSampleRate = audioBuffer?.sampleRate ?? 44100;

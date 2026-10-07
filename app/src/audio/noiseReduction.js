@@ -37,17 +37,17 @@ export function fft(real, imag) {
   }
   // Butterfly passes.
   for (let blockSize = 2; blockSize <= size; blockSize *= 2) {
-    const halfBlock = blockSize / 2,
-      angleStep = (-2 * Math.PI) / blockSize;
+    const halfBlock = blockSize / 2;
+    const angleStep = (-2 * Math.PI) / blockSize;
     for (let blockStart = 0; blockStart < size; blockStart += blockSize)
       for (let k = 0; k < halfBlock; k++) {
-        const angle = angleStep * k,
-          cos = Math.cos(angle),
-          sin = Math.sin(angle),
-          even = blockStart + k,
-          odd = blockStart + k + halfBlock,
-          oddReal = cos * real[odd] - sin * imag[odd],
-          oddImag = cos * imag[odd] + sin * real[odd];
+        const angle = angleStep * k;
+        const cos = Math.cos(angle);
+        const sin = Math.sin(angle);
+        const even = blockStart + k;
+        const odd = blockStart + k + halfBlock;
+        const oddReal = cos * real[odd] - sin * imag[odd];
+        const oddImag = cos * imag[odd] + sin * real[odd];
         real[odd] = real[even] - oddReal;
         imag[odd] = imag[even] - oddImag;
         real[even] += oddReal;
@@ -70,18 +70,18 @@ export function ifft(real, imag) {
 // Averages the power spectrum of channel 0 between startTime and endTime (seconds).
 // Returns a Float32Array of 2 * bins: [mean power per bin..., power std-dev per bin...].
 export function captureNoiseProfile(audioBuffer, startTime, endTime) {
-  const sampleRate = audioBuffer.sampleRate,
-    startSample = Math.max(0, Math.floor(startTime * sampleRate)),
-    endSample = Math.min(audioBuffer.length, Math.floor(endTime * sampleRate)),
-    samples = audioBuffer.getChannelData(0),
-    hann = hannWindow(FFT_SIZE),
-    binCount = FFT_SIZE / 2 + 1,
-    powerSum = new Float32Array(binCount),
-    powerSquaredSum = new Float32Array(binCount);
+  const sampleRate = audioBuffer.sampleRate;
+  const startSample = Math.max(0, Math.floor(startTime * sampleRate));
+  const endSample = Math.min(audioBuffer.length, Math.floor(endTime * sampleRate));
+  const samples = audioBuffer.getChannelData(0);
+  const hann = hannWindow(FFT_SIZE);
+  const binCount = FFT_SIZE / 2 + 1;
+  const powerSum = new Float32Array(binCount);
+  const powerSquaredSum = new Float32Array(binCount);
   let frameCount = 0;
   for (let frameStart = startSample; frameStart + FFT_SIZE <= endSample; frameStart += HOP_SIZE) {
-    const real = new Float32Array(FFT_SIZE),
-      imag = new Float32Array(FFT_SIZE);
+    const real = new Float32Array(FFT_SIZE);
+    const imag = new Float32Array(FFT_SIZE);
     for (let i = 0; i < FFT_SIZE; i++) real[i] = samples[frameStart + i] * hann[i];
     fft(real, imag);
     for (let bin = 0; bin < binCount; bin++) {
@@ -106,47 +106,47 @@ export function captureNoiseProfile(audioBuffer, startTime, endTime) {
 // Applies spectral subtraction with the given noise profile to [startTime, endTime) (seconds;
 // whole buffer when undefined) and returns a new AudioBuffer. Reports progress through the store.
 export async function applyNoiseReduction(audioBuffer, noiseProfile, strength, startTime, endTime) {
-  const context = getAudioContext(),
-    sampleRate = audioBuffer.sampleRate,
-    amount = Math.max(0, Math.min(1, strength)),
-    startSample = startTime === undefined ? 0 : Math.max(0, Math.floor(startTime * sampleRate)),
-    endSample =
-      endTime === undefined
-        ? audioBuffer.length
-        : Math.min(audioBuffer.length, Math.floor(endTime * sampleRate)),
-    output = context.createBuffer(audioBuffer.numberOfChannels, audioBuffer.length, sampleRate),
-    hann = hannWindow(FFT_SIZE),
-    binCount = FFT_SIZE / 2 + 1,
-    OVER_SUBTRACTION = 2, // noise power multiplier subtracted at full strength
-    GAIN_FLOOR = 0.05, // minimum per-bin gain (limits "musical noise")
-    TEMPORAL_SMOOTHING = 0.6, // weight of the previous frame's gain
-    STD_DEV_WEIGHT = 1, // how many std-devs above the mean the noise floor sits
-    // Newer profiles hold [mean power, std-dev]; older ones hold magnitudes only.
-    hasStdDev = noiseProfile.length >= 2 * binCount,
-    noiseFloor = new Float32Array(binCount),
-    real = new Float32Array(FFT_SIZE),
-    imag = new Float32Array(FFT_SIZE),
-    gains = new Float32Array(binCount),
-    smoothedGains = new Float32Array(binCount);
+  const context = getAudioContext();
+  const sampleRate = audioBuffer.sampleRate;
+  const amount = Math.max(0, Math.min(1, strength));
+  const startSample = startTime === undefined ? 0 : Math.max(0, Math.floor(startTime * sampleRate));
+  const endSample =
+    endTime === undefined
+      ? audioBuffer.length
+      : Math.min(audioBuffer.length, Math.floor(endTime * sampleRate));
+  const output = context.createBuffer(audioBuffer.numberOfChannels, audioBuffer.length, sampleRate);
+  const hann = hannWindow(FFT_SIZE);
+  const binCount = FFT_SIZE / 2 + 1;
+  const OVER_SUBTRACTION = 2; // noise power multiplier subtracted at full strength
+  const GAIN_FLOOR = 0.05; // minimum per-bin gain (limits "musical noise")
+  const TEMPORAL_SMOOTHING = 0.6; // weight of the previous frame's gain
+  const STD_DEV_WEIGHT = 1; // how many std-devs above the mean the noise floor sits
+  // Newer profiles hold [mean power, std-dev]; older ones hold magnitudes only.
+  const hasStdDev = noiseProfile.length >= 2 * binCount;
+  const noiseFloor = new Float32Array(binCount);
+  const real = new Float32Array(FFT_SIZE);
+  const imag = new Float32Array(FFT_SIZE);
+  const gains = new Float32Array(binCount);
+  const smoothedGains = new Float32Array(binCount);
   for (let bin = 0; bin < binCount; bin++) {
-    const meanPower = hasStdDev ? noiseProfile[bin] : noiseProfile[bin] * noiseProfile[bin],
-      stdDev = hasStdDev ? noiseProfile[binCount + bin] : 0;
+    const meanPower = hasStdDev ? noiseProfile[bin] : noiseProfile[bin] * noiseProfile[bin];
+    const stdDev = hasStdDev ? noiseProfile[binCount + bin] : 0;
     noiseFloor[bin] = meanPower + STD_DEV_WEIGHT * stdDev;
   }
   let framesPerChannel = 0;
   for (let frameStart = startSample; frameStart + FFT_SIZE <= endSample; frameStart += HOP_SIZE)
     framesPerChannel++;
   const totalFrames = Math.max(1, framesPerChannel * audioBuffer.numberOfChannels);
-  let doneFrames = 0,
-    lastYield = performance.now();
+  let doneFrames = 0;
+  let lastYield = performance.now();
   for (let channel = 0; channel < audioBuffer.numberOfChannels; channel++) {
-    const input = audioBuffer.getChannelData(channel),
-      outputData = output.getChannelData(channel);
+    const input = audioBuffer.getChannelData(channel);
+    const outputData = output.getChannelData(channel);
     outputData.set(input);
-    const regionLength = endSample - startSample,
-      overlapSum = new Float32Array(regionLength),
-      windowSum = new Float32Array(regionLength),
-      previousGains = new Float32Array(binCount);
+    const regionLength = endSample - startSample;
+    const overlapSum = new Float32Array(regionLength);
+    const windowSum = new Float32Array(regionLength);
+    const previousGains = new Float32Array(binCount);
     for (let bin = 0; bin < binCount; bin++) previousGains[bin] = 1;
     for (let frameStart = startSample; frameStart + FFT_SIZE <= endSample; frameStart += HOP_SIZE) {
       const regionOffset = frameStart - startSample;
@@ -192,8 +192,8 @@ export async function applyNoiseReduction(audioBuffer, noiseProfile, strength, s
       }
       doneFrames++;
       if (performance.now() - lastYield > 30) {
-        const percent = Math.round((doneFrames / totalFrames) * 100),
-          filledBlocks = Math.round(percent / 5);
+        const percent = Math.round((doneFrames / totalFrames) * 100);
+        const filledBlocks = Math.round(percent / 5);
         useEditorStore
           .getState()
           .setProcessing(
@@ -212,8 +212,8 @@ export async function applyNoiseReduction(audioBuffer, noiseProfile, strength, s
     const crossfadeLength = FFT_SIZE;
     for (let i = 0; i < regionLength; i++)
       if (windowSum[i] > 1e-8) {
-        const processed = overlapSum[i] / windowSum[i],
-          original = input[startSample + i];
+        const processed = overlapSum[i] / windowSum[i];
+        const original = input[startSample + i];
         let mix = 1;
         if (i < crossfadeLength) mix = i / crossfadeLength;
         else if (i >= regionLength - crossfadeLength)

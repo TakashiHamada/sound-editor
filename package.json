@@ -11,7 +11,8 @@
     "test": "playwright test",
     "test:build": "vite build && playwright test",
     "format": "prettier --write app/src tests",
-    "format:check": "prettier --check app/src tests"
+    "format:check": "prettier --check app/src tests",
+    "lint": "eslint ."
   },
   "dependencies": {
     "mpg123-decoder": "1.0.3",
@@ -20,8 +21,12 @@
     "zustand": "5.0.15"
   },
   "devDependencies": {
+    "@eslint/js": "10.0.1",
     "@playwright/test": "1.56.1",
     "@vitejs/plugin-react": "6.1.2",
+    "eslint": "10.12.0",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "globals": "17.13.0",
     "prettier": "3.8.1",
     "vite": "8.3.3"
   }

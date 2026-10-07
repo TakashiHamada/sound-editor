@@ -2,14 +2,14 @@
 import { useEditorStore } from '../store/editorStore.js';
 
 export function zoomIn() {
-  const state = useEditorStore.getState(),
-    activeFile = state.getActiveFile();
+  const state = useEditorStore.getState();
+  const activeFile = state.getActiveFile();
   if (activeFile) state.setZoom(activeFile.zoom * 1.5);
 }
 
 export function zoomOut() {
-  const state = useEditorStore.getState(),
-    activeFile = state.getActiveFile();
+  const state = useEditorStore.getState();
+  const activeFile = state.getActiveFile();
   if (activeFile) state.setZoom(activeFile.zoom / 1.5);
 }
 

@@ -27,10 +27,10 @@ export function revealTime(time) {
 // otherwise null. `timeToPx` converts a time in seconds to a canvas x coordinate.
 export function nearSelectionEdge(x, timeToPx, start, end) {
   if (start == null || end == null || start === end) return null;
-  let low = Math.min(start, end),
-    high = Math.max(start, end),
-    distanceToLow = Math.abs(x - timeToPx(low)),
-    distanceToHigh = Math.abs(x - timeToPx(high));
+  const low = Math.min(start, end);
+  const high = Math.max(start, end);
+  const distanceToLow = Math.abs(x - timeToPx(low));
+  const distanceToHigh = Math.abs(x - timeToPx(high));
   return Math.min(distanceToLow, distanceToHigh) > GRIP_PX
     ? null
     : distanceToLow <= distanceToHigh
@@ -40,8 +40,8 @@ export function nearSelectionEdge(x, timeToPx, start, end) {
 
 // Moves the active file's playhead to `time` (clamped to the clip) and scrolls it into view.
 export function seekTo(time) {
-  let state = useEditorStore.getState(),
-    activeFile = state.getActiveFile();
+  const state = useEditorStore.getState();
+  const activeFile = state.getActiveFile();
   if (!activeFile) return;
   time = Math.max(0, Math.min(activeFile.audioBuffer.duration, time));
   state.setCurrentTime(time);
@@ -52,24 +52,24 @@ export function seekTo(time) {
 // With no existing selection, the other edge is the playhead if it lies on the far side of
 // `time`, otherwise the clip end (for 'start') / clip start (for 'end').
 export function setSelectionEdge(edge, time) {
-  let state = useEditorStore.getState(),
-    activeFile = state.getActiveFile();
+  const state = useEditorStore.getState();
+  const activeFile = state.getActiveFile();
   if (!activeFile) return;
-  let duration = activeFile.audioBuffer.duration,
-    selectionStart = activeFile.selectionStart,
-    selectionEnd = activeFile.selectionEnd,
-    hasSelection =
-      selectionStart !== null && selectionEnd !== null && selectionStart !== selectionEnd;
+  const duration = activeFile.audioBuffer.duration;
+  const selectionStart = activeFile.selectionStart;
+  const selectionEnd = activeFile.selectionEnd;
+  const hasSelection =
+    selectionStart !== null && selectionEnd !== null && selectionStart !== selectionEnd;
   time = Math.max(0, Math.min(duration, time));
   if (edge === 'start') {
-    let otherEdge = hasSelection
+    const otherEdge = hasSelection
       ? Math.max(selectionStart, selectionEnd)
       : activeFile.currentTime > time
         ? activeFile.currentTime
         : duration;
     state.setSelection(time, otherEdge);
   } else {
-    let otherEdge = hasSelection
+    const otherEdge = hasSelection
       ? Math.min(selectionStart, selectionEnd)
       : activeFile.currentTime < time
         ? activeFile.currentTime
@@ -82,10 +82,10 @@ export function setSelectionEdge(edge, time) {
 // Parses `ss`, `mm:ss` or `hh:mm:ss` (each part may carry a decimal fraction) into seconds.
 // Returns null for anything else.
 export function parseTime(text) {
-  let parts = String(text).trim().split(':');
+  const parts = String(text).trim().split(':');
   if (parts.length > 3 || parts.some((part) => !/^(\d+\.?\d*|\.\d+)$/.test(part.trim())))
     return null;
   let seconds = 0;
-  for (let part of parts) seconds = seconds * 60 + Number(part);
+  for (const part of parts) seconds = seconds * 60 + Number(part);
   return Number.isFinite(seconds) ? seconds : null;
 }

@@ -16,8 +16,8 @@ export async function loadFiles(files) {
         const audioBuffer = await decodeAudioFile(file);
         const fileSize = file.size;
         try {
-          const bytes = await file.arrayBuffer(),
-            wavFormat = readWavFormat(new DataView(bytes));
+          const bytes = await file.arrayBuffer();
+          const wavFormat = readWavFormat(new DataView(bytes));
           if (wavFormat) {
             const bitDepth = wavFormat.bits;
             if ([8, 16, 24, 32].includes(bitDepth)) audioBuffer._originalBitDepth = bitDepth;
@@ -30,7 +30,9 @@ export async function loadFiles(files) {
               audioBuffer._originalChannels = channelCount;
             audioBuffer._originalFileSize = fileSize;
           }
-        } catch {}
+        } catch {
+          // Not a readable WAV header: keep the decoder's values.
+        }
         if (state.addFile(audioBuffer, file.name) === null) {
           state.log(
             'Load failed',
@@ -52,8 +54,8 @@ export async function loadFiles(files) {
 
 export function closeFile(id) {
   stopPlayback();
-  const state = useEditorStore.getState(),
-    file = state.files.get(id);
+  const state = useEditorStore.getState();
+  const file = state.files.get(id);
   state.setPlaying(false);
   state.removeFile(id);
   state.log(`Closed "${file?.fileName ?? 'file'}"`);

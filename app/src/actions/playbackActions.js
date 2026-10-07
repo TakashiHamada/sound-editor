@@ -5,8 +5,8 @@ import { startPlayback, stopPlayback } from '../audio/playback.js';
 // Pauses if playing. Otherwise plays the selection (if any) or from the playhead; a playhead
 // parked at the very end (within 1 ms) restarts from 0.
 export function togglePlayback() {
-  const state = useEditorStore.getState(),
-    activeFile = state.getActiveFile();
+  const state = useEditorStore.getState();
+  const activeFile = state.getActiveFile();
   if (!activeFile) return;
   if (state.isPlaying) {
     stopPlayback();
@@ -14,14 +14,14 @@ export function togglePlayback() {
     return;
   }
   const offset =
-      activeFile.selectionStart ??
-      (activeFile.currentTime >= activeFile.audioBuffer.duration - 0.001
-        ? 0
-        : activeFile.currentTime),
-    duration =
-      activeFile.selectionStart !== null && activeFile.selectionEnd !== null
-        ? activeFile.selectionEnd - activeFile.selectionStart
-        : undefined;
+    activeFile.selectionStart ??
+    (activeFile.currentTime >= activeFile.audioBuffer.duration - 0.001
+      ? 0
+      : activeFile.currentTime);
+  const duration =
+    activeFile.selectionStart !== null && activeFile.selectionEnd !== null
+      ? activeFile.selectionEnd - activeFile.selectionStart
+      : undefined;
   startPlayback(
     activeFile.audioBuffer,
     offset,

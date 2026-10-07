@@ -49,8 +49,8 @@ const styles = {
 // (20% headroom above 1.0): green up to CLIP_LEVEL, red beyond it, a faint red line marking
 // CLIP_LEVEL, and a 2px peak-hold tick (only drawn once the held peak exceeds 0.01).
 function drawMeterBar(ctx, level, peak, y, width, height) {
-  const clipX = (CLIP_LEVEL / 1.2) * width,
-    levelX = Math.min(level / 1.2, 1) * width;
+  const clipX = (CLIP_LEVEL / 1.2) * width;
+  const levelX = Math.min(level / 1.2, 1) * width;
   ctx.fillStyle = '#1a1a30';
   ctx.fillRect(0, y, width, height);
   if (levelX > 0) {
@@ -77,53 +77,53 @@ function drawMeterBar(ctx, level, peak, y, width, height) {
 // stopped it draws zero levels but keeps the last channel count. Peaks are held for 30 frames and
 // then decay by 5% per frame.
 function LevelMeter({ isPlaying }) {
-  const canvasRef = useRef(null),
-    animationFrameRef = useRef(null),
-    leftPeakRef = useRef(0),
-    leftHoldFramesRef = useRef(0),
-    rightPeakRef = useRef(0),
-    rightHoldFramesRef = useRef(0),
-    channelCountRef = useRef(1),
-    drawFrame = useCallback(() => {
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-      const levels = isPlaying
-        ? getLevels()
-        : { left: 0, right: 0, channels: channelCountRef.current };
-      channelCountRef.current = levels.channels;
-      const isStereo = levels.channels >= 2,
-        canvasHeight = isStereo ? METER_BAR_HEIGHT * 2 + METER_BAR_GAP : METER_BAR_HEIGHT;
-      canvas.height = canvasHeight;
-      canvas.style.height = `${canvasHeight}px`;
-      if (levels.left > leftPeakRef.current) {
-        leftPeakRef.current = levels.left;
-        leftHoldFramesRef.current = 0;
+  const canvasRef = useRef(null);
+  const animationFrameRef = useRef(null);
+  const leftPeakRef = useRef(0);
+  const leftHoldFramesRef = useRef(0);
+  const rightPeakRef = useRef(0);
+  const rightHoldFramesRef = useRef(0);
+  const channelCountRef = useRef(1);
+  const drawFrame = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const levels = isPlaying
+      ? getLevels()
+      : { left: 0, right: 0, channels: channelCountRef.current };
+    channelCountRef.current = levels.channels;
+    const isStereo = levels.channels >= 2;
+    const canvasHeight = isStereo ? METER_BAR_HEIGHT * 2 + METER_BAR_GAP : METER_BAR_HEIGHT;
+    canvas.height = canvasHeight;
+    canvas.style.height = `${canvasHeight}px`;
+    if (levels.left > leftPeakRef.current) {
+      leftPeakRef.current = levels.left;
+      leftHoldFramesRef.current = 0;
+    } else {
+      leftHoldFramesRef.current++;
+      if (leftHoldFramesRef.current > 30) leftPeakRef.current *= 0.95;
+    }
+    drawMeterBar(ctx, levels.left, leftPeakRef.current, 0, METER_WIDTH, METER_BAR_HEIGHT);
+    if (isStereo) {
+      if (levels.right > rightPeakRef.current) {
+        rightPeakRef.current = levels.right;
+        rightHoldFramesRef.current = 0;
       } else {
-        leftHoldFramesRef.current++;
-        if (leftHoldFramesRef.current > 30) leftPeakRef.current *= 0.95;
+        rightHoldFramesRef.current++;
+        if (rightHoldFramesRef.current > 30) rightPeakRef.current *= 0.95;
       }
-      drawMeterBar(ctx, levels.left, leftPeakRef.current, 0, METER_WIDTH, METER_BAR_HEIGHT);
-      if (isStereo) {
-        if (levels.right > rightPeakRef.current) {
-          rightPeakRef.current = levels.right;
-          rightHoldFramesRef.current = 0;
-        } else {
-          rightHoldFramesRef.current++;
-          if (rightHoldFramesRef.current > 30) rightPeakRef.current *= 0.95;
-        }
-        drawMeterBar(
-          ctx,
-          levels.right,
-          rightPeakRef.current,
-          METER_BAR_HEIGHT + METER_BAR_GAP,
-          METER_WIDTH,
-          METER_BAR_HEIGHT,
-        );
-      }
-      animationFrameRef.current = requestAnimationFrame(drawFrame);
-    }, [isPlaying]);
+      drawMeterBar(
+        ctx,
+        levels.right,
+        rightPeakRef.current,
+        METER_BAR_HEIGHT + METER_BAR_GAP,
+        METER_WIDTH,
+        METER_BAR_HEIGHT,
+      );
+    }
+    animationFrameRef.current = requestAnimationFrame(drawFrame);
+  }, [isPlaying]);
   useEffect(() => {
     animationFrameRef.current = requestAnimationFrame(drawFrame);
     return () => {
@@ -157,10 +157,10 @@ export function StatusBar({
   logMessage,
 }) {
   const hasSelection =
-      selectionStart !== null && selectionEnd !== null && selectionStart !== selectionEnd,
-    selectionLength = hasSelection ? Math.abs(selectionEnd - selectionStart) : 0,
-    [lastLog, setLastLog] = useState(null),
-    [flashMessage, setFlashMessage] = useState(null);
+    selectionStart !== null && selectionEnd !== null && selectionStart !== selectionEnd;
+  const selectionLength = hasSelection ? Math.abs(selectionEnd - selectionStart) : 0;
+  const [lastLog, setLastLog] = useState(null);
+  const [flashMessage, setFlashMessage] = useState(null);
   // Remember the most recent log entry (an empty message keeps the previous one shown).
   useEffect(() => {
     if (!logMessage) return;

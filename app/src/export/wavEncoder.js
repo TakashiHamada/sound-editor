@@ -3,19 +3,19 @@ import { normalizeWavBitDepth } from './exportConfig.js';
 
 export function encodeWav(buffer, bitDepth) {
   bitDepth = normalizeWavBitDepth(bitDepth);
-  const numChannels = buffer.numberOfChannels,
-    sampleRate = buffer.sampleRate,
-    length = buffer.length,
-    bytesPerSample = bitDepth / 8,
-    dataSize = length * numChannels * bytesPerSample,
-    fileSize = 44 + dataSize;
+  const numChannels = buffer.numberOfChannels;
+  const sampleRate = buffer.sampleRate;
+  const length = buffer.length;
+  const bytesPerSample = bitDepth / 8;
+  const dataSize = length * numChannels * bytesPerSample;
+  const fileSize = 44 + dataSize;
   // RIFF sizes are unsigned 32-bit.
   if (fileSize > 4294967295)
     throw new Error(
       'WAV output would exceed the 4 GB format limit. Lower the sample rate / bit depth or export as MP3.',
     );
-  const arrayBuffer = new ArrayBuffer(fileSize),
-    view = new DataView(arrayBuffer);
+  const arrayBuffer = new ArrayBuffer(fileSize);
+  const view = new DataView(arrayBuffer);
   // 44-byte canonical header.
   writeAscii(view, 0, 'RIFF');
   view.setUint32(4, fileSize - 8, true);
@@ -43,12 +43,12 @@ export function encodeWav(buffer, bitDepth) {
         const clamped = Math.max(-1, Math.min(1, sample));
         view.setUint8(offset, Math.floor(clamped < 0 ? clamped * 128 : clamped * 127) + 128);
       } else if (bitDepth === 16) {
-        const clamped = Math.max(-1, Math.min(1, sample)),
-          value = Math.floor(clamped < 0 ? clamped * 32768 : clamped * 32767);
+        const clamped = Math.max(-1, Math.min(1, sample));
+        const value = Math.floor(clamped < 0 ? clamped * 32768 : clamped * 32767);
         view.setInt16(offset, value, true);
       } else if (bitDepth === 24) {
-        const clamped = Math.max(-1, Math.min(1, sample)),
-          value = Math.floor(clamped < 0 ? clamped * 8388608 : clamped * 8388607);
+        const clamped = Math.max(-1, Math.min(1, sample));
+        const value = Math.floor(clamped < 0 ? clamped * 8388608 : clamped * 8388607);
         // Little-endian 3-byte two's complement.
         view.setUint8(offset, value & 255);
         view.setUint8(offset + 1, (value >> 8) & 255);

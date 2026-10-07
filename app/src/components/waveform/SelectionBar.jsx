@@ -49,29 +49,29 @@ function SelectionBarButton({ label, title, onClick, disabled, color }) {
 // Enter / blur commits a parseable changed draft via `onCommit` (an unparseable draft is flagged
 // red on Enter, discarded on blur); Escape discards the draft.
 function TimeField({ label, title, value, onCommit, disabled }) {
-  let [draft, setDraft] = useState(null),
-    [isInvalid, setIsInvalid] = useState(false),
-    // Text shown when the field gained focus; an unchanged draft is not committed.
-    valueOnFocusRef = useRef(''),
-    // Set when Enter/Escape already handled the edit, so the following blur is ignored.
-    skipNextBlurRef = useRef(false),
-    displayValue = value == null ? '' : formatTime(value),
-    commitDraft = () => {
-      if (draft === null || draft === valueOnFocusRef.current) {
-        setDraft(null);
-        setIsInvalid(false);
-        return true;
-      }
-      let parsedTime = parseTime(draft);
-      if (parsedTime === null) {
-        setIsInvalid(true);
-        return false;
-      }
+  const [draft, setDraft] = useState(null);
+  const [isInvalid, setIsInvalid] = useState(false);
+  // Text shown when the field gained focus; an unchanged draft is not committed.
+  const valueOnFocusRef = useRef('');
+  // Set when Enter/Escape already handled the edit, so the following blur is ignored.
+  const skipNextBlurRef = useRef(false);
+  const displayValue = value == null ? '' : formatTime(value);
+  const commitDraft = () => {
+    if (draft === null || draft === valueOnFocusRef.current) {
       setDraft(null);
       setIsInvalid(false);
-      onCommit(parsedTime);
       return true;
-    };
+    }
+    const parsedTime = parseTime(draft);
+    if (parsedTime === null) {
+      setIsInvalid(true);
+      return false;
+    }
+    setDraft(null);
+    setIsInvalid(false);
+    onCommit(parsedTime);
+    return true;
+  };
   return (
     <label
       title={title}
@@ -144,23 +144,23 @@ function TimeField({ label, title, value, onCommit, disabled }) {
 }
 
 export function SelectionBar({ audioBuffer, selectionStart, selectionEnd, currentTime }) {
-  let duration = audioBuffer ? audioBuffer.duration : 0,
-    hasSelection =
-      selectionStart != null && selectionEnd != null && selectionStart !== selectionEnd,
-    selectionLow = hasSelection ? Math.min(selectionStart, selectionEnd) : null,
-    selectionHigh = hasSelection ? Math.max(selectionStart, selectionEnd) : null,
-    // Called as a plain function (not rendered as a component), as in the original.
-    renderDivider = () => (
-      <div
-        style={{
-          width: 1,
-          height: 18,
-          background: '#2a2a4a',
-          margin: '0 4px',
-          flexShrink: 0,
-        }}
-      />
-    );
+  const duration = audioBuffer ? audioBuffer.duration : 0;
+  const hasSelection =
+    selectionStart != null && selectionEnd != null && selectionStart !== selectionEnd;
+  const selectionLow = hasSelection ? Math.min(selectionStart, selectionEnd) : null;
+  const selectionHigh = hasSelection ? Math.max(selectionStart, selectionEnd) : null;
+  // Called as a plain function (not rendered as a component), as in the original.
+  const renderDivider = () => (
+    <div
+      style={{
+        width: 1,
+        height: 18,
+        background: '#2a2a4a',
+        margin: '0 4px',
+        flexShrink: 0,
+      }}
+    />
+  );
   return (
     <div
       data-selbar=""

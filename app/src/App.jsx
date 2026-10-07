@@ -41,23 +41,23 @@ import { ProcessingModal } from './components/ProcessingModal.jsx';
 import { HelpDialog } from './components/HelpDialog.jsx';
 
 export function App() {
-  const state = useEditorStore(),
-    fileInputRef = useRef(null),
-    [isSettingsOpen, setIsSettingsOpen] = useState(false),
-    activeFile = state.getActiveFile(),
-    openFilePicker = useCallback(() => {
-      fileInputRef.current?.click();
-    }, []),
-    handleFileInputChange = useCallback(async (event) => {
-      const files = event.target.files;
-      if (!files || files.length === 0) return;
-      await loadFiles(Array.from(files));
-      // Reset so picking the same file again still fires `change`.
-      event.target.value = '';
-    }, []),
-    handleFilesDrop = useCallback(async (files) => {
-      await loadFiles(files);
-    }, []);
+  const state = useEditorStore();
+  const fileInputRef = useRef(null);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const activeFile = state.getActiveFile();
+  const openFilePicker = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
+  const handleFileInputChange = useCallback(async (event) => {
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
+    await loadFiles(Array.from(files));
+    // Reset so picking the same file again still fires `change`.
+    event.target.value = '';
+  }, []);
+  const handleFilesDrop = useCallback(async (files) => {
+    await loadFiles(files);
+  }, []);
   useKeyboardShortcuts(
     useMemo(
       () => ({
@@ -77,29 +77,14 @@ export function App() {
         onMoveLeft: movePlayheadLeft,
         onMoveRight: movePlayheadRight,
       }),
-      [
-        undo,
-        redo,
-        copySelection,
-        cutSelection,
-        pasteClipboard,
-        deleteSelection,
-        selectAll,
-        togglePlayback,
-        stopAndRewind,
-        zoomIn,
-        zoomOut,
-        openFilePicker,
-        exportWithCurrentSettings,
-        movePlayheadLeft,
-        movePlayheadRight,
-      ],
+      // The actions are module-level functions; only the file-picker callback is component state.
+      [openFilePicker],
     ),
   );
-  const hasAudio = !!activeFile,
-    hasSelection = activeFile
-      ? activeFile.selectionStart !== null && activeFile.selectionEnd !== null
-      : false;
+  const hasAudio = !!activeFile;
+  const hasSelection = activeFile
+    ? activeFile.selectionStart !== null && activeFile.selectionEnd !== null
+    : false;
   return (
     <div
       style={{

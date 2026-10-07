@@ -26,7 +26,8 @@ export async function exportActiveFile(config) {
     activeFile.fileName.lastIndexOf('.') > 0
       ? activeFile.fileName.substring(0, activeFile.fileName.lastIndexOf('.'))
       : activeFile.fileName;
-  let blob, extension;
+  let blob;
+  let extension;
   if (isMp3) {
     blob = await encodeMp3(buffer, config.bitrate, {
       // lame MPEG modes: 0 = stereo, 1 = joint stereo, 3 = mono

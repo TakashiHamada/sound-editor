@@ -6,9 +6,9 @@
 // the "Ctrl+O or drag & drop" empty-state text, so it needs no hooks into the app.
 import './placeholder.css';
 
-var TILE_SIZE = 72;
-var NS = 'http://www.w3.org/2000/svg';
-var COLORS = [
+const TILE_SIZE = 72;
+const NS = 'http://www.w3.org/2000/svg';
+const COLORS = [
   '#4fc3f7',
   '#80deea',
   '#4dd0e1',
@@ -24,8 +24,8 @@ var COLORS = [
 // --- SVG helpers ---
 
 function svgEl(tag, attrs) {
-  var el = document.createElementNS(NS, tag);
-  for (var k in attrs) el.setAttribute(k, attrs[k]);
+  const el = document.createElementNS(NS, tag);
+  for (const k in attrs) el.setAttribute(k, attrs[k]);
   return el;
 }
 
@@ -43,9 +43,9 @@ function polygon(pts, color, sw) {
 }
 
 function regularPoints(n, r, offset) {
-  var pts = [];
-  for (var i = 0; i < n; i++) {
-    var a = (((i * 360) / n + (offset || -90)) * Math.PI) / 180;
+  const pts = [];
+  for (let i = 0; i < n; i++) {
+    const a = (((i * 360) / n + (offset || -90)) * Math.PI) / 180;
     pts.push((50 + r * Math.cos(a)).toFixed(1) + ',' + (50 + r * Math.sin(a)).toFixed(1));
   }
   return pts.join(' ');
@@ -55,8 +55,8 @@ function regularPoints(n, r, offset) {
 
 // 8-pointed star (Rub el Hizb): two overlapping squares + inner octagon
 function createStar8(size, color) {
-  var svg = makeSvg(size);
-  var rectAttrs = {
+  const svg = makeSvg(size);
+  const rectAttrs = {
     x: 22,
     y: 22,
     width: 56,
@@ -74,11 +74,11 @@ function createStar8(size, color) {
 
 // Hexagonal rosette: outer hexagon + 6 radiating triangles + inner hexagon
 function createHexRosette(size, color) {
-  var svg = makeSvg(size);
+  const svg = makeSvg(size);
   svg.appendChild(polygon(regularPoints(6, 38, -30), color));
-  for (var i = 0; i < 6; i++) {
-    var a1 = ((i * 60 - 30) * Math.PI) / 180;
-    var a2 = (((i + 1) * 60 - 30) * Math.PI) / 180;
+  for (let i = 0; i < 6; i++) {
+    const a1 = ((i * 60 - 30) * Math.PI) / 180;
+    const a2 = (((i + 1) * 60 - 30) * Math.PI) / 180;
     svg.appendChild(
       polygon(
         '50,50 ' +
@@ -100,7 +100,7 @@ function createHexRosette(size, color) {
 
 // Diamond lattice: outer diamond + cross + inner diamond
 function createDiamond(size, color) {
-  var svg = makeSvg(size);
+  const svg = makeSvg(size);
   svg.appendChild(polygon('50,8 92,50 50,92 8,50', color));
   svg.appendChild(
     svgEl('line', { x1: 50, y1: 20, x2: 50, y2: 80, stroke: color, 'stroke-width': '0.8' }),
@@ -112,25 +112,28 @@ function createDiamond(size, color) {
   return svg;
 }
 
-var SHAPES = [createStar8, createHexRosette, createDiamond];
+const SHAPES = [createStar8, createHexRosette, createDiamond];
 
 // --- Placeholder grid ---
 
 function buildGrid(container) {
-  var rect = container.getBoundingClientRect();
-  var cols = Math.max(1, Math.ceil(rect.width / (TILE_SIZE + 2)));
-  var rows = Math.max(1, Math.ceil(rect.height / (TILE_SIZE + 2)));
+  const rect = container.getBoundingClientRect();
+  const cols = Math.max(1, Math.ceil(rect.width / (TILE_SIZE + 2)));
+  const rows = Math.max(1, Math.ceil(rect.height / (TILE_SIZE + 2)));
 
-  var grid = document.createElement('div');
+  const grid = document.createElement('div');
   grid.className = 'geo-grid';
   grid.style.gridTemplateColumns = 'repeat(' + cols + ', ' + TILE_SIZE + 'px)';
   grid.style.gridTemplateRows = 'repeat(' + rows + ', ' + TILE_SIZE + 'px)';
 
-  for (var row = 0; row < rows; row++) {
-    for (var col = 0; col < cols; col++) {
-      var tile = document.createElement('div');
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      const tile = document.createElement('div');
       tile.className = 'geo-tile';
-      var svg = SHAPES[(row + col) % 3](TILE_SIZE - 4, COLORS[(row * cols + col) % COLORS.length]);
+      const svg = SHAPES[(row + col) % 3](
+        TILE_SIZE - 4,
+        COLORS[(row * cols + col) % COLORS.length],
+      );
       svg.style.animationDelay = (Math.random() * 8).toFixed(2) + 's';
       tile.appendChild(svg);
       grid.appendChild(tile);
@@ -144,12 +147,12 @@ function buildGrid(container) {
 // Find the waveform container by structural layout:
 // the largest canvas's parent with border-radius (waveform panel).
 function findWaveformContainer() {
-  var best = null,
-    bestArea = 0;
-  var canvases = document.querySelectorAll('#root canvas');
-  for (var i = 0; i < canvases.length; i++) {
-    var c = canvases[i];
-    var area = c.width * c.height;
+  let best = null;
+  let bestArea = 0;
+  const canvases = document.querySelectorAll('#root canvas');
+  for (let i = 0; i < canvases.length; i++) {
+    const c = canvases[i];
+    const area = c.width * c.height;
     if (area > bestArea) {
       bestArea = area;
       best = c;
@@ -162,22 +165,22 @@ function findWaveformContainer() {
 // The React app renders a div with "No file loaded" + "Ctrl+O or drag & drop"
 // when no files are open. We target this specific two-child structure.
 function findEmptyStateNode() {
-  var spans = document.querySelectorAll('#root span');
-  for (var i = 0; i < spans.length; i++) {
+  const spans = document.querySelectorAll('#root span');
+  for (let i = 0; i < spans.length; i++) {
     if (spans[i].textContent === 'Ctrl+O or drag & drop') return spans[i];
   }
   return null;
 }
 
 function init() {
-  var container = findWaveformContainer();
+  const container = findWaveformContainer();
   if (!container) return false;
 
   if (getComputedStyle(container).position === 'static') {
     container.style.position = 'relative';
   }
 
-  var placeholder = document.createElement('div');
+  const placeholder = document.createElement('div');
   placeholder.id = 'waveform-placeholder';
   placeholder.appendChild(buildGrid(container));
   container.appendChild(placeholder);
@@ -186,7 +189,7 @@ function init() {
   placeholder.classList.toggle('hidden', !findEmptyStateNode());
 
   // React DOM mutations trigger instant visibility check
-  var observer = new MutationObserver(function () {
+  const observer = new MutationObserver(function () {
     placeholder.classList.toggle('hidden', !findEmptyStateNode());
   });
   observer.observe(document.getElementById('root'), {
@@ -195,8 +198,8 @@ function init() {
   });
 
   // Rebuild grid on container resize
-  var resizeObserver = new ResizeObserver(function () {
-    var oldGrid = placeholder.querySelector('.geo-grid');
+  const resizeObserver = new ResizeObserver(function () {
+    const oldGrid = placeholder.querySelector('.geo-grid');
     if (oldGrid) placeholder.removeChild(oldGrid);
     placeholder.appendChild(buildGrid(container));
   });
@@ -206,7 +209,7 @@ function init() {
 }
 
 // Wait for React to render, then initialize
-var elapsed = 0;
-var poll = setInterval(function () {
+let elapsed = 0;
+const poll = setInterval(function () {
   if (init() || (elapsed += 200) >= 10000) clearInterval(poll);
 }, 200);

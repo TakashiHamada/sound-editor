@@ -6,8 +6,8 @@ import { exportActiveFile } from '../export/exportActiveFile.js';
 import { runWithProcessing } from './runWithProcessing.js';
 
 export async function exportWithCurrentSettings() {
-  const state = useEditorStore.getState(),
-    activeFile = state.getActiveFile();
+  const state = useEditorStore.getState();
+  const activeFile = state.getActiveFile();
   if (!activeFile) return;
   const config =
     state.exportConfig ?? defaultExportConfig(activeFile.audioBuffer, activeFile.fileName);

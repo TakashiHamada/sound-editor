@@ -24,6 +24,8 @@ export function ProcessingModal({ message }) {
     }
     const timer = setTimeout(() => setIsDialogVisible(true), 500);
     return () => clearTimeout(timer);
+    // Keyed on presence, not text: live progress updates must not restart the 500 ms timer.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [!!message]);
   return message ? (
     <div
