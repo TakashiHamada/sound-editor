@@ -45,7 +45,10 @@ React component or state logic changes must be made directly to the minified bun
 |            |                               |  In/Out  |          |
 | [Export]   |                               |          |          |
 | [Settings] |                               | NOISE    |          |
-|            |                               | REDUCTION|          |
+|            |-------------------------------| REDUCTION|          |
+|            | Selection bar (__SelBar)      |          |          |
+|            | [⏮Start][End⏭] [⇤] In [◆]    |          |          |
+|            |   Out [◆][⇥] Length [Clear]  |          |          |
 +------------+-------------------------------+----------+----------+
 | Status Bar (Ht)                                                 |
 | [Log (220px fixed)] | Position | Selection | Zoom | History |Lvl |
@@ -91,6 +94,9 @@ When no audio files are loaded, the waveform display area shows an animated over
 | `Kt` | ExportSettingsModal | Export config dialog (format, rate, depth) |
 | `Yt` | HelpDialog | Keyboard shortcuts overlay (F1) |
 | `qt` | ProcessingModal | Loading/processing indicator overlay |
+| `Tt` | WaveformCanvas | Canvas inside `Ot`: drawing, click/drag selection, edge snapping, draggable selection edges |
+| `__SelBar` | SelectionBar | Row under the waveform: jump-to-start/end, exact In/Out time fields, set-edge-to-clip-start/end/playhead |
+| `__TimeField` / `__SBButton` | — | Time input (`mm:ss.mmm` / `ss.sss`, Enter to apply, Esc to cancel) and compact button used by `__SelBar` |
 
 ### Style/Color Constants (minified names)
 
@@ -148,18 +154,20 @@ Zustand-like store created via `C()`. Access with `k()` (hook) or `k.getState()`
 }
 ```
 
-Note: `audioBuffer._originalBitDepth` is set on WAV files at load time (8/16/24/32).
+Note: WAV files get `audioBuffer._originalBitDepth` (8/16/24/32), `_originalSampleRate`, `_originalChannels` and `_originalFileSize` at load time (read from the RIFF `fmt ` chunk by `__wavFmt`, which walks the chunk list instead of assuming a fixed offset). Edits create new `AudioBuffer`s, so `__meta(src, dst)` copies these fields forward in `setAudioBuffer`, `pushHistory` and the history-snapshot copier `T` — otherwise the first edit would silently drop them and the default export would fall back to the AudioContext rate / 24-bit.
+
+`setSelection` and `setCurrentTime` clamp their inputs to `[0, duration]` of the active file.
 
 ### ExportConfig Structure
 
 ```
 {
   format: "wav",               // "wav" or "mp3"
-  sampleRate: 44100,           // 8000-96000
+  sampleRate: 44100,           // WAV: 8000-96000 (or the source rate). MP3: snapped to a legal MPEG rate by __mp3Rate()
   srcQuality: "medium",        // "low", "medium", or "high"
   channels: "stereo",          // "mono" or "stereo"
   bitDepth: 24,                // 8, 16, 24, or 32 (WAV only)
-  bitrate: 192,                // 32-320 kbps (MP3 CBR). lamejs build does not ship VBR iteration loops, so CBR only.
+  bitrate: 192,                // 32-320 kbps (MP3 CBR); clamped to 8-160 below 32 kHz (MPEG-2/2.5) by __mp3Bitrate(). lamejs build does not ship VBR iteration loops, so CBR only.
   mp3Mode: "joint",            // "joint" (default, MS encoding), "stereo" (independent L/R). Mono channels override to MONO internally.
   lowpass: 18000,              // 0 = auto, or Hz cutoff (MP3 only). Cuts inaudible HF so bits go to audible band; quality control, not size control.
   preset: "music_high"         // "music_high" / "music_small" / "voice" / "custom"
@@ -215,6 +223,7 @@ The StatusBar has a persistent log area (220px, left side) that always shows the
 | Volume | `Volume +3.0 dB` / `Volume -6.0 dB (selection)` |
 | Fade In/Out | `Fade in (linear)` / `Fade out (exponential)` |
 | Noise capture | `Noise profile captured (0.50s)` |
+| Noise capture (selection < 2048 samples) | `Noise selection too short` (error) |
 | Noise reduction | `Noise reduction applied (strength: 0.8)` |
 | Export settings | `Export settings saved (wav, 44100Hz, stereo)` |
 | Reset settings | `Export settings reset to default` |
@@ -237,21 +246,24 @@ Decoding fallback chain:
 4. HTML Media Element fallback
 5. mpg123 WASM decoder (MP3)
 
-After decoding, WAV files get `_originalBitDepth` from header byte offset 34.
+After decoding, WAV files get `_originalBitDepth` / `_originalSampleRate` / `_originalChannels` from the `fmt ` chunk (`__wavFmt`). If the 8-file limit rejects a file, the loader logs `Load failed` instead of a false `Loaded`.
 
 ### Export
 
 | Format | Function | Details |
 |--------|----------|---------|
-| WAV | `ut(audioBuffer, bitDepth)` | Writes RIFF/WAVE header + PCM data. 16-bit=PCM(1), 32-bit=Float(3) |
+| WAV | `ut(audioBuffer, bitDepth)` | Writes RIFF/WAVE header + PCM data. 8-bit=unsigned PCM(1), 16/24-bit=signed PCM(1), 32-bit=Float(3). Unknown depths fall back to 16 (`__wavBits`). Throws a readable error if the file would exceed the 4 GB RIFF limit. |
 | MP3 | `ft(audioBuffer, bitrate, opts)` | Lame encoder, CBR only. `opts = { mode, lowpass, quality }` — MPEG mode (0=stereo, 1=joint, 3=mono), lowpass cutoff Hz, encoder quality 0-9. (This lamejs build omits VBR iteration loops, so VBR is not available.) `ft` is `async`: the 1152-sample encode loop yields back to the event loop (via `setTimeout`) roughly every 30ms of wall-clock work and reports progress through `k.getState().setProcessing(...)` (see Processing Overlay Progress below), so callers must `await` it. |
 
-Export flow (`j` callback):
-1. Get active file and resolve config (`exportConfig ?? defaults from file`)
+Export flow (`j` callback → `A(config)`):
+1. Get active file and resolve config (`exportConfig ?? defaults from file`), then normalize it with `__normCfg` (same helper the Settings modal and the size estimator use): `bitDepth` → 8/16/24/32, and for MP3 `sampleRate` → nearest legal MPEG rate (`__mp3Rate`: 8000/11025/12000/16000/22050/24000/32000/44100/48000) and `bitrate` → the range that MPEG version allows (`__mp3Bitrate`).
 2. Resample if needed (`ye` function with quality setting)
-3. Convert channels if needed (`be` function: stereo to mono)
-4. Encode to WAV (`ut`) or MP3 (`await ft(...)`). For MP3, the export pipeline derives the LAME `mode` from `mp3Mode` (`joint`→1, `stereo`→0) and forces MONO(3) when `channels === "mono"` or the buffer is already 1-channel.
-5. Trigger download via blob URL (`pt` function)
+3. Convert channels if needed: `be` (→ mono), `__toStereo` (WAV mono → stereo, or >2 channels → first two). A mono source exported as MP3 "stereo" stays mono-mode (identical channels would only waste bits).
+4. Encode to WAV (`ut`) or MP3 (`await ft(...)`). For MP3, the export pipeline derives the LAME `mode` from `mp3Mode` (`joint`→1, `stereo`→0) and forces MONO(3) when the buffer is 1-channel.
+5. Trigger download via blob URL (`pt` function; the URL is revoked after 60 s so large downloads have time to start)
+6. Log the parameters that were actually written (rate, channels, bit depth / bitrate, size).
+
+**History of the "Export failed" bug:** an 8-bit source WAV made the default config `bitDepth: 8`, and the Settings modal had no 8-bit option, so the select *displayed* "16 bit" while the config kept 8. `ut` then fell through to the 32-bit float branch with a 1-byte stride and wrote past the end of the `DataView` (`Offset is outside the bounds of the DataView`). Every WAV export of an unedited 8-bit file failed. Fixed by implementing 8-bit PCM and normalizing the config.
 
 #### Processing Overlay Progress
 
@@ -267,6 +279,8 @@ The lamejs `Mp3Encoder` constructor in this build was patched to accept a 4th `o
 | `lowpass` | Hz | unset (LAME auto) | If `>0`, sets `P.lowpassfreq`. Cuts inaudible HF so bits go to the audible band — improves perceived quality at fixed bitrate |
 | `quality` | `0`–`9` | `3` | LAME encoder algorithm quality. Pipeline passes `2` (high quality, slower) |
 
+The constructor also sets `P.out_samplerate = samplerate` whenever the input rate is a legal MPEG rate. Without it, LAME's `optimum_samplefreq()` silently re-samples 44.1/48 kHz input down to **32 kHz** whenever the lowpass is ≤ 15.25 kHz (the 12/14/15 kHz lowpass options). Note that this build's `assert` is a no-op, so a failing `lame_init_params()` does not throw — keep feeding it legal rates.
+
 VBR (`P.VBR = vbr_mtrh / vbr_rh / vbr_abr`) is **not** available — this lamejs JS port references `VBRNewIterationLoop` / `VBROldIterationLoop` / `ABRIterationLoop` constructors that were never defined in the bundle. Setting `P.VBR` to any non-zero value reaches `new <UndefinedClass>(C)` inside `lame_init_params` and throws `ReferenceError`. Only the CBR iteration loop (`g`) is implemented. Likewise `bWriteVbrTag` triggers `InitVbrTag` which has untranslated Java syntax (`new int[400]`) — also patched to `new Int32Array(400)` as a safety net but kept disabled.
 
 #### Presets
@@ -275,18 +289,20 @@ The Export Settings modal exposes a `preset` selector that bulk-applies fields:
 
 | Preset | bitrate | channels | sampleRate | mp3Mode | lowpass | format |
 |---|---|---|---|---|---|---|
-| `music_high` | 192 kbps | stereo | (unchanged) | joint | 20 kHz | mp3 |
-| `music_small` | 128 kbps | stereo | (unchanged) | joint | 16 kHz | mp3 |
+| `music_high` | 192 kbps | stereo | unchanged (44.1 kHz if currently < 32 kHz) | joint | 20 kHz | mp3 |
+| `music_small` | 128 kbps | stereo | unchanged (44.1 kHz if currently < 32 kHz) | joint | 16 kHz | mp3 |
 | `voice` | 64 kbps | mono | 22050 Hz | joint | 15 kHz | mp3 |
 | `custom` | — | — | — | — | — | — |
 
 Editing any individual field in the modal automatically switches `preset` to `custom`.
 
+The modal only offers legal MPEG sample rates when the format is MP3, adds the source rate to the WAV list when it is not one of the standard entries (so the select never displays a different value than the one that will be used), offers 8/16/24/32-bit for WAV, and shows a warning under Bitrate when the chosen rate (< 32 kHz) caps it at 160 kbps. **Save** stores the normalized config.
+
 #### Size Estimators
 
 Both the Export Settings modal and the FilesPanel preview row share two helpers (defined right after `Wt`):
 
-- `en(config, duration)` — predicted output bytes. WAV uses `duration × sampleRate × channels × bitDepth/8 + 44`; MP3 uses `duration × bitrate × 1000 / 8` (CBR is exact since LAME pads to fixed bitrate).
+- `en(config, duration)` — predicted output bytes, computed on `__normCfg(config)` so it matches what the export writes. WAV uses `duration × sampleRate × channels × bitDepth/8 + 44`; MP3 uses `duration × bitrate × 1000 / 8` (CBR is exact since LAME pads to fixed bitrate).
 - `tn(audioBuffer, duration)` — source size as a 16-bit WAV equivalent at the buffer's native rate/channels. Used to display the compression ratio in the modal preview.
 
 Joint Stereo and Lowpass affect _quality_ at a given bitrate, not file size, so they intentionally do not change the estimator output. To shrink the file, reduce `bitrate` (or `channels`/`sampleRate`).
@@ -377,6 +393,8 @@ BufferSource → [ChannelSplitter → AnalyserL/R → ChannelMerger] → GainNod
 | `Ctrl+O` | Open audio file |
 | `Ctrl+Shift+E` | Quick export |
 | `Space` | Play / Pause |
+| `Home` / `End` | Jump playhead to the very start / end |
+| `Shift+Home` / `Shift+End` | Extend selection to the very start / end (from the playhead if nothing is selected) |
 | `Escape` | Stop |
 | `Ctrl+Z` | Undo |
 | `Ctrl+Shift+Z` | Redo |
@@ -388,7 +406,8 @@ BufferSource → [ChannelSplitter → AnalyserL/R → ChannelMerger] → GainNod
 | `Scroll wheel` | Zoom at cursor |
 | `F1` | Toggle help dialog |
 | Click | Set playhead |
-| Click+Drag | Select range |
+| Click+Drag | Select range. Within 8 px of the clip start/end it snaps to exactly 0 / duration; dragging past the canvas edge clamps there. Movements under 3 px count as a click. |
+| Drag a selection edge | Adjust selection start / end (cursor turns ↔ within 6 px of an edge; yellow grips mark the edges) |
 | Drag & Drop | Load audio file (onto waveform view or Files panel) |
 
 ## Development Notes for AI Agents
@@ -420,6 +439,8 @@ dd if=assets/index-wGz6QD6f.js bs=1 skip=OFFSET count=LENGTH 2>/dev/null
 - FFT helpers / STFT constants: `var Ce=2048,we=512;function Te(e){`
 - Noise profile capture: `function Oe(e,t,n){let r=e.sampleRate`
 - Noise reduction apply: `function ke(e,t,n,r,i){let a=D()`
+- Export/selection helpers (readable, inserted just before the App root): `var __MP3_RATES=` … `function __SelBar(` — `__mp3Rate`, `__mp3Bitrate`, `__wavBits`, `__normCfg`, `__rateOpts`, `__toStereo`, `__meta`, `__wavFmt`, `__nearEdge`, `__seekTo`, `__setSelEdge`, `__parseTime`
+- Waveform canvas mouse handling: `__hv=(0,y.useCallback)` (hover cursor) and the `T=(0,y.useCallback)` right after it (click / drag / edge-drag)
 
 ### Commit Convention
 
@@ -433,12 +454,12 @@ The app displays the current **branch name** and **last commit timestamp (JST)**
 
 Location in `assets/index-wGz6QD6f.js` (format: `<branch>`,` | `,`<YYYY-MM-DD HH:MM JST>`):
 ```
-`claude/add-audio-placeholder-eBid1`,` | `,`<YYYY-MM-DD HH:MM JST>`
+`claude/<branch>`,` | `,`<YYYY-MM-DD HH:MM JST>`
 ```
 
 To find the current value:
 ```bash
-grep -ao 'add-audio-placeholder.\{0,50\}JST' assets/index-wGz6QD6f.js
+grep -aoE '`claude/[^`]+`,` \| `,`[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2} JST`' assets/index-wGz6QD6f.js
 ```
 
 Update procedure:

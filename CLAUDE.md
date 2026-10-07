@@ -50,3 +50,11 @@ Before adding any VBR-style feature, swap the encoder for a build that actually 
 ## Gotcha: keep the two output-size estimators in sync
 
 Two places display predicted export size: the Settings modal (`Kt`) preview row and the FilesPanel (`At`) bottom Preview row. Both call the shared helpers `en(config, duration)` (output bytes) and `tn(audioBuffer, duration)` (16-bit WAV-equivalent source size), defined right after `Wt` in the bundle. If you change one site's formula, change the helper instead so both stay consistent.
+
+## Gotcha: normalize export configs through `__normCfg`
+
+The Settings modal, `en()` and the export pipeline (`A`) all pass the config through `__normCfg()` (bit depth → 8/16/24/32, MP3 sample rate → legal MPEG rate, MP3 bitrate → range allowed at that rate). Any new export option or new caller must go through it too, otherwise the modal, the size preview and the written file disagree — that mismatch (an 8-bit source the modal displayed as "16 bit") is what caused the old "Export failed: Offset is outside the bounds of the DataView" bug.
+
+## Testing changes
+
+There is no test suite. Pretty-print the bundle with `npx prettier --parser babel` (into a scratch dir, never back into the repo) to read it, and drive the real page with Playwright (Chromium is preinstalled) to verify — `index.html` can be served with any static server.
