@@ -120,7 +120,11 @@ export const useEditorStore = create((set, get) => ({
   setScrollX: (scrollX) => {
     const { activeFileId, files } = get();
     if (activeFileId)
-      set({ files: updateFile(files, activeFileId, { scrollX: Math.max(0, scrollX) }) });
+      set({
+        files: updateFile(files, activeFileId, {
+          scrollX: Number.isFinite(scrollX) ? Math.max(0, scrollX) : 0,
+        }),
+      });
   },
 
   setCurrentTime: (time) => {

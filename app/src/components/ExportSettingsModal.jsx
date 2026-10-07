@@ -25,9 +25,6 @@ export function ExportSettingsModal({
   exportConfig,
   onSaveConfig,
 }) {
-  // NOTE: defaultExportConfig labels its result preset 'music_high' although it keeps the file's
-  // own format (often WAV) and an 18 kHz lowpass, so with no saved config the Preset select shows
-  // "Music — High Quality (192 kbps, 20 kHz)" for settings that do not match it. Kept as-is.
   const [draft, setDraft] = useState({
     ...(exportConfig ?? defaultExportConfig(audioBuffer, fileName)),
   });

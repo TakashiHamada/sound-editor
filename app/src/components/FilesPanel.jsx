@@ -142,6 +142,8 @@ export function FilesPanel({
   onFilesDrop,
 }) {
   const [renamingId, setRenamingId] = useState(null);
+  // Which rename input is open: 'list' (file list row) or 'info' (File Info header).
+  const [renameSource, setRenameSource] = useState('list');
   const [renameText, setRenameText] = useState('');
   const [hoveredCloseId, setHoveredCloseId] = useState(null);
   const [dragOver, setDragOver] = useState(false);
@@ -170,6 +172,7 @@ export function FilesPanel({
     setRenameText(fileName);
     setTimeout(() => {
       renameStartedAtRef.current = Date.now();
+      setRenameSource('list');
       setRenamingId(id);
     }, 50);
   };
@@ -255,7 +258,7 @@ export function FilesPanel({
                 onClick={() => handleItemClick(id)}
                 onDoubleClick={() => handleItemDoubleClick(id, file.fileName)}
               >
-                {renamingId === id ? (
+                {renamingId === id && renameSource === 'list' ? (
                   <input
                     style={styles.renameInput}
                     value={renameText}
@@ -303,16 +306,13 @@ export function FilesPanel({
               <div
                 style={{ ...styles.fileNameInfo, cursor: 'pointer' }}
                 title="Double-click to rename"
-                // NOTE: this also mounts the list row's autoFocus rename input (the active file is
-                // always in the list). That one gets focus first, then loses it to the input
-                // below, and its onBlur commits the unchanged name and closes the rename
-                // immediately (unless a list rename started < 200ms ago). Kept as-is.
                 onDoubleClick={() => {
+                  setRenameSource('info');
                   setRenamingId(activeFile.id);
                   setRenameText(activeFile.fileName);
                 }}
               >
-                {renamingId === activeFile.id ? (
+                {renamingId === activeFile.id && renameSource === 'info' ? (
                   <input
                     autoFocus={true}
                     value={renameText}

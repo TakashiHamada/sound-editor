@@ -184,7 +184,7 @@ WAV files get `audioBuffer._originalBitDepth` (8/16/24/32), `_originalSampleRate
 
 ## Logging
 
-The StatusBar's log area (220 px, left) always shows the latest message until the next one arrives; click it to copy the detailed text. Errors are red with `✘`, info is green with `✔`.
+The StatusBar's log area (220 px, left) always shows the latest message until the next one arrives; click it to copy the detailed text (it briefly shows `Copied to clipboard`, or `Copy failed` / `Copy not available` when the Clipboard API refuses or is missing). Errors are red with `✘`, info is green with `✔`.
 
 Use `useEditorStore.getState().log(text, level, detail)`: `text` short (< ~40 chars), `level` `"info"` (default) or `"error"`, `detail` longer text for the clipboard (defaults to `text`).
 
@@ -195,7 +195,7 @@ Use `useEditorStore.getState().log(text, level, detail)`: `text` short (< ~40 ch
 | Export | `Exported "file.mp3"` / `Export failed` (error) |
 | Undo / Redo | `Undo` / `Redo` |
 | Copy / Cut / Paste / Delete | `Copied 2.50s`, `Cut 1.30s`, `Pasted 2.50s at 1.00s`, `Deleted 0.80s` |
-| Volume | `Volume +2.0 dB` / `… (selection)` (note: prints the linear gain factor, see Known issues) |
+| Volume | `Volume +6.0 dB (selection)` |
 | Fade In/Out | `Fade in (0.5)` / `Fade out (0.5)` |
 | Noise capture | `Noise profile captured (0.50s)` / `Noise selection too short` (error) |
 | Noise reduction | `Noise reduction applied (strength: 0.8)` |
@@ -273,7 +273,7 @@ Joint Stereo and Lowpass change quality, not size.
 
 | Effect | Implementation |
 |--------|---------------|
-| **Gain** | Slider -20 to +20 dB with live preview via `previewGain`; applied on release (`applyGain`, factor clamped to 0–3) |
+| **Gain** | Slider -20 to +20 dB (selection required) with live preview via `previewGain`; applied on release (`applyGain`, linear factor clamped to 0–10, i.e. the full ±20 dB) |
 | **Fade In / Out** | Linear ramp over the given duration from the selection start / to the selection end |
 | **Noise Reduction** | Power-domain Wiener-style spectral subtraction with oversubtraction, spectral floor, and time/frequency gain smoothing (below) |
 
@@ -352,11 +352,7 @@ Shortcuts are ignored while focus is in an `input`, `textarea` or `select`.
 
 ## Testing
 
-`tests/e2e/*.spec.js` cover export formats and settings (header-level checks of the downloaded WAV/MP3), presets, metadata preservation across edits, selection snapping/grips/fields/shortcuts, editing operations, the 8-file limit and the help dialog. Fixtures are synthesized in `tests/helpers/audioFixtures.js`; `tests/helpers/app.js` holds page helpers. Tests run against the **built** site, so run `npm run build` (or `npm run test:build`) first.
-
-## Known issues
-
-- The volume log line prints the linear gain factor with a "dB" suffix (e.g. +6 dB logs as `Volume +2.0 dB`). Cosmetic; the audio is correct.
+`tests/e2e/*.spec.js` cover export formats and settings (header-level checks of the downloaded WAV/MP3), presets, metadata preservation across edits, selection snapping/grips/fields/shortcuts, editing operations, the 8-file limit, the help dialog, and regressions for bugs fixed after the refactor (`fixes.spec.js`). Fixtures are synthesized in `tests/helpers/audioFixtures.js`; `tests/helpers/app.js` holds page helpers. Tests run against the **built** site, so run `npm run build` (or `npm run test:build`) first.
 
 ## Notes for contributors / AI agents
 

@@ -43,6 +43,8 @@ export function logLine(page) {
 
 /** Run the quick export (Ctrl+Shift+E) and return the downloaded file. */
 export async function exportActive(page) {
+  // Shortcuts are ignored while an input (e.g. a slider just dragged) has focus.
+  await page.evaluate(() => document.activeElement?.blur());
   const [download] = await Promise.all([
     page.waitForEvent('download'),
     page.keyboard.press('Control+Shift+E'),

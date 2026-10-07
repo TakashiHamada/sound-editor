@@ -188,11 +188,14 @@ export function StatusBar({
         title={lastLog ? 'Click to copy details' : null}
         onClick={() => {
           if (!lastLog) return;
-          // NOTE: the writeText promise is not awaited/caught, so "Copied to clipboard" is shown
-          // even when the write is rejected (and `navigator.clipboard` is undefined in insecure
-          // contexts, which throws here). Kept as-is.
-          navigator.clipboard.writeText(lastLog.detail);
-          setFlashMessage('Copied to clipboard');
+          // The Clipboard API is missing in insecure contexts and may reject (permissions).
+          const copy = navigator.clipboard?.writeText(lastLog.detail);
+          if (!copy) setFlashMessage('Copy not available');
+          else
+            copy.then(
+              () => setFlashMessage('Copied to clipboard'),
+              () => setFlashMessage('Copy failed'),
+            );
         }}
       >
         {flashMessage ? (

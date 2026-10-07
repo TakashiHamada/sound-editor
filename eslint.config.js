@@ -24,6 +24,11 @@ export default [
   },
   {
     files: ['tests/**/*.js', '*.config.js'],
-    languageOptions: { ecmaVersion: 'latest', sourceType: 'module', globals: globals.node },
+    // Tests also contain callbacks that Playwright runs in the page (page.evaluate).
+    languageOptions: {
+      ecmaVersion: 'latest',
+      sourceType: 'module',
+      globals: { ...globals.node, ...globals.browser },
+    },
   },
 ];

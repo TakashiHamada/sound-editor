@@ -66,7 +66,7 @@ export function defaultExportConfig(audioBuffer, fileName) {
     bitrate: 192,
     mp3Mode: 'joint',
     lowpass: 18000,
-    preset: 'music_high',
+    preset: 'custom',
   };
 }
 

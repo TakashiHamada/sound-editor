@@ -53,7 +53,8 @@ export function deleteRange(buffer, startTime, endTime) {
 export function applyGain(buffer, gain, startTime, endTime) {
   const context = getAudioContext();
   const sampleRate = buffer.sampleRate;
-  const clampedGain = Math.max(0, Math.min(3, gain));
+  // 0..10 covers the volume slider's -20..+20 dB range.
+  const clampedGain = Math.max(0, Math.min(10, gain));
   const startSample = startTime === undefined ? 0 : Math.max(0, Math.floor(startTime * sampleRate));
   const endSample =
     endTime === undefined
@@ -162,8 +163,7 @@ export function toMono(buffer) {
 }
 
 // Inserts `inserted` into `buffer` at `time` seconds (clamped to the buffer bounds).
-// NOTE: reads `inserted.getChannelData(channel)` for every channel of `buffer`, so this throws
-// if `inserted` has fewer channels than `buffer`; callers are expected to match channel counts.
+// If `inserted` has fewer channels than `buffer`, its last channel fills the remaining ones.
 export function insertBuffer(buffer, inserted, time) {
   const context = getAudioContext();
   const sampleRate = buffer.sampleRate;
@@ -176,7 +176,7 @@ export function insertBuffer(buffer, inserted, time) {
     const source = buffer.getChannelData(channel);
     const target = result.getChannelData(channel);
     target.set(source.subarray(0, insertAt));
-    target.set(inserted.getChannelData(channel), insertAt);
+    target.set(inserted.getChannelData(Math.min(channel, inserted.numberOfChannels - 1)), insertAt);
     target.set(source.subarray(insertAt), insertAt + inserted.length);
   }
   return result;

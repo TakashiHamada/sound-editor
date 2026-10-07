@@ -139,31 +139,33 @@ function decodeWithMediaElement(file) {
           recorder.connect(context.destination);
           audio.currentTime = 0;
           audio.play();
-          // NOTE: this 'ended' handler runs outside the try/catch; if it throws (e.g. createBuffer
-          // with length 0 when no audio was captured) the promise never settles, because the
-          // timeout has already been cleared.
           audio.addEventListener(
             'ended',
             () => {
               clearTimeout(timeoutId);
-              recorder.disconnect();
-              mediaSource.disconnect();
-              mute.disconnect();
-              cleanup();
-              let capturedLength = 0;
-              for (const chunk of leftChunks) capturedLength += chunk.length;
-              const length = Math.min(capturedLength, expectedLength);
-              const result = context.createBuffer(2, length, sampleRate);
-              const left = result.getChannelData(0);
-              const right = result.getChannelData(1);
-              let writeOffset = 0;
-              for (let i = 0; i < leftChunks.length && writeOffset < length; i++) {
-                const count = Math.min(leftChunks[i].length, length - writeOffset);
-                left.set(leftChunks[i].subarray(0, count), writeOffset);
-                right.set(rightChunks[i].subarray(0, count), writeOffset);
-                writeOffset += count;
+              try {
+                recorder.disconnect();
+                mediaSource.disconnect();
+                mute.disconnect();
+                cleanup();
+                let capturedLength = 0;
+                for (const chunk of leftChunks) capturedLength += chunk.length;
+                const length = Math.min(capturedLength, expectedLength);
+                const result = context.createBuffer(2, length, sampleRate);
+                const left = result.getChannelData(0);
+                const right = result.getChannelData(1);
+                let writeOffset = 0;
+                for (let i = 0; i < leftChunks.length && writeOffset < length; i++) {
+                  const count = Math.min(leftChunks[i].length, length - writeOffset);
+                  left.set(leftChunks[i].subarray(0, count), writeOffset);
+                  right.set(rightChunks[i].subarray(0, count), writeOffset);
+                  writeOffset += count;
+                }
+                resolve(result);
+              } catch (error) {
+                // e.g. nothing was captured (createBuffer with length 0).
+                reject(error);
               }
-              resolve(result);
             },
             { once: true },
           );
@@ -234,11 +236,12 @@ export async function decodeAudioFile(file) {
   // [3] Native decode in temporary contexts running at common sample rates.
   for (const sampleRate of [44100, 48000, 22050, 16000])
     try {
-      // NOTE: the temporary context is only closed on success; a failed decode leaks it.
       const tempContext = new AudioContext({ sampleRate });
-      const decoded = await tempContext.decodeAudioData(stripped.slice(0));
-      await tempContext.close();
-      return decoded;
+      try {
+        return await tempContext.decodeAudioData(stripped.slice(0));
+      } finally {
+        await tempContext.close();
+      }
     } catch (error) {
       diagnostics.push(`[3] decodeAudioData @${sampleRate}Hz: ${error.message}`);
     }
@@ -252,12 +255,15 @@ export async function decodeAudioFile(file) {
 
   // [5] mpg123 WASM decoder on the original bytes.
   try {
-    // NOTE: if `decode()` throws, `free()` is skipped and the WASM decoder instance leaks.
     const decoder = new MPEGDecoder();
     await decoder.ready;
     const bytes = new Uint8Array(arrayBuffer);
-    const decoded = decoder.decode(bytes);
-    decoder.free();
+    let decoded;
+    try {
+      decoded = decoder.decode(bytes);
+    } finally {
+      decoder.free();
+    }
     if (decoded.samplesDecoded === 0) diagnostics.push('[5] mpg123: decoded 0 samples');
     else {
       // Prefer the sample rate from the first valid frame header when it disagrees with mpg123's.

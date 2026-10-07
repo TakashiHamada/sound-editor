@@ -55,6 +55,9 @@ export function WaveformView({
   const maxScrollX = totalWidth - width;
   const scrollFraction = maxScrollX > 0 ? scrollX / maxScrollX : 0;
   const thumbLeft = Math.round(scrollFraction * (trackWidth - thumbWidth));
+  // Distance the thumb can move. At zoom 1 the thumb fills the track (travel 0); use 1 so a drag
+  // computes 0 instead of 0 / 0 = NaN (maxScrollX is 0 there, so the result is still 0).
+  const thumbTravel = Math.max(1, trackWidth - thumbWidth);
   const scrollbarDragRef = useRef(null);
   // Mouse-down on the thumb starts dragging it; on the track it centers the thumb on the click
   // and then drags from there.
@@ -67,18 +70,15 @@ export function WaveformView({
         scrollbarDragRef.current = { startX: event.clientX, startThumbLeft: thumbLeft };
       else {
         const newThumbLeft = clickX - thumbWidth / 2;
-        const fraction = Math.max(0, Math.min(1, newThumbLeft / (trackWidth - thumbWidth)));
+        const fraction = Math.max(0, Math.min(1, newThumbLeft / thumbTravel));
         onScrollXChange(Math.round(fraction * maxScrollX));
         scrollbarDragRef.current = { startX: event.clientX, startThumbLeft: newThumbLeft };
       }
-      // NOTE: when the thumb fills the whole track (zoom 1), `trackWidth - thumbWidth` is 0, so a
-      // mouse move with no horizontal delta computes 0 / 0 = NaN and calls onScrollXChange(NaN)
-      // (the store keeps NaN, blanking the waveform/ruler until scrollX is reset). Kept as-is.
       const handleWindowMouseMove = (moveEvent) => {
         if (!scrollbarDragRef.current) return;
         const deltaX = moveEvent.clientX - scrollbarDragRef.current.startX;
         const draggedThumbLeft = scrollbarDragRef.current.startThumbLeft + deltaX;
-        const fraction = Math.max(0, Math.min(1, draggedThumbLeft / (trackWidth - thumbWidth)));
+        const fraction = Math.max(0, Math.min(1, draggedThumbLeft / thumbTravel));
         onScrollXChange(Math.round(fraction * maxScrollX));
       };
       const handleWindowMouseUp = () => {
@@ -89,7 +89,7 @@ export function WaveformView({
       window.addEventListener('mousemove', handleWindowMouseMove);
       window.addEventListener('mouseup', handleWindowMouseUp);
     },
-    [thumbLeft, thumbWidth, trackWidth, maxScrollX, onScrollXChange],
+    [thumbLeft, thumbWidth, thumbTravel, maxScrollX, onScrollXChange],
   );
   // Latest zoom, updated synchronously by the wheel handler so rapid wheel events compound.
   const zoomRef = useRef(zoom);

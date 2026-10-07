@@ -116,15 +116,19 @@ export function selectAll() {
 
 // Applies a linear gain factor to the selection (when `selectionOnly` and a selection exists)
 // or to the whole file.
-// NOTE: EffectsPanel passes a linear gain (10 ** (dB / 20)), not dB, yet the log message below
-// prints that factor with a " dB" suffix and a sign derived from it (always "+", since the gain
-// is positive). Also, " (selection)" is logged whenever `selectionOnly` is set, even when there
-// is no selection and the whole file was changed. Kept as in the original bundle.
+// "+6.0 dB" / "-3.5 dB" for a linear gain factor.
+function formatGainDb(gain) {
+  const db = 20 * Math.log10(gain);
+  return `${db >= 0 ? '+' : '-'}${Math.abs(db).toFixed(1)} dB`;
+}
+
 export function adjustVolume(gain, selectionOnly) {
   const activeFile = useEditorStore.getState().getActiveFile();
   if (activeFile) {
+    const hasSelection =
+      selectionOnly && activeFile.selectionStart !== null && activeFile.selectionEnd !== null;
     commitEdit(
-      selectionOnly && activeFile.selectionStart !== null && activeFile.selectionEnd !== null
+      hasSelection
         ? applyGain(
             activeFile.audioBuffer,
             gain,
@@ -135,9 +139,7 @@ export function adjustVolume(gain, selectionOnly) {
     );
     useEditorStore
       .getState()
-      .log(
-        `Volume ${gain > 0 ? '+' : '-'}${Math.abs(gain).toFixed(1)} dB${selectionOnly ? ' (selection)' : ''}`,
-      );
+      .log(`Volume ${formatGainDb(gain)}${hasSelection ? ' (selection)' : ''}`);
   }
 }
 
