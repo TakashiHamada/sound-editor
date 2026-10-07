@@ -10,8 +10,8 @@
     "preview": "vite preview",
     "test": "playwright test",
     "test:build": "vite build && playwright test",
-    "format": "prettier --write app/src tests",
-    "format:check": "prettier --check app/src tests",
+    "format": "prettier --write app/src tests \"*.config.js\"",
+    "format:check": "prettier --check app/src tests \"*.config.js\"",
     "lint": "eslint ."
   },
   "dependencies": {

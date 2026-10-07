@@ -3,7 +3,9 @@ import reactHooks from 'eslint-plugin-react-hooks';
 import globals from 'globals';
 
 export default [
-  { ignores: ['assets/**', 'index.html', 'app/src/vendor/**', 'node_modules/**', 'test-results/**'] },
+  {
+    ignores: ['assets/**', 'index.html', 'app/src/vendor/**', 'node_modules/**', 'test-results/**'],
+  },
   js.configs.recommended,
   {
     files: ['app/src/**/*.{js,jsx}'],

@@ -13,7 +13,12 @@ export default defineConfig({
     acceptDownloads: true,
     viewport: { width: 1400, height: 820 },
   },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'], viewport: { width: 1400, height: 820 } } }],
+  projects: [
+    {
+      name: 'chromium',
+      use: { ...devices['Desktop Chrome'], viewport: { width: 1400, height: 820 } },
+    },
+  ],
   webServer: {
     command: 'npx vite preview',
     url: 'http://localhost:4173/',
