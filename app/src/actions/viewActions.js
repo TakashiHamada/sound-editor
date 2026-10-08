@@ -1,5 +1,5 @@
 // View/navigation actions: zoom in/out/fit and nudging the playhead with the arrow keys.
-import { useEditorStore } from '../store/editorStore.js';
+import { MIN_ZOOM, useEditorStore } from '../store/editorStore.js';
 
 export function zoomIn() {
   const state = useEditorStore.getState();
@@ -15,7 +15,7 @@ export function zoomOut() {
 
 export function zoomToFit() {
   const state = useEditorStore.getState();
-  state.setZoom(1);
+  state.setZoom(MIN_ZOOM);
   state.setScrollX(0);
 }
 

@@ -4,6 +4,7 @@
 import { useState, useRef, useCallback } from 'react';
 import { colors } from '../theme.js';
 import { useEditorStore } from '../store/editorStore.js';
+import { dbToGain, formatDb } from '../utils/format.js';
 
 const styles = {
   panel: {
@@ -73,7 +74,7 @@ const styles = {
     backgroundColor: colors.bg,
     border: `1px solid ${colors.border}`,
     borderRadius: 3,
-    color: '#555566',
+    color: colors.textDisabled,
     fontSize: 11,
     cursor: 'not-allowed',
     textAlign: 'center',
@@ -107,11 +108,6 @@ const styles = {
 
 const buttonStyleFor = (enabled) => (enabled ? styles.button : styles.buttonDisabled);
 
-const formatDb = (db) => (db === 0 ? '0.0 dB' : `${db > 0 ? '+' : ''}${db.toFixed(1)} dB`);
-
-// Decibels to linear amplitude factor.
-const dbToLinearGain = (db) => 10 ** (db / 20);
-
 export function EffectsPanel({
   hasAudio,
   hasSelection,
@@ -134,17 +130,18 @@ export function EffectsPanel({
   const isDraggingGainRef = useRef(false);
   // Latest gain (dB) while dragging; applied to the selection on release.
   const pendingGainDbRef = useRef(0);
+  const showsCapturedProfile = hasNoiseProfile && !isCapturingNoise;
 
   // Start previewing the slider gain live (via the store's previewGain) on pointer-down.
   const startGainPreview = useCallback((db) => {
     isDraggingGainRef.current = true;
     pendingGainDbRef.current = db;
-    useEditorStore.getState().setPreviewGain(dbToLinearGain(db));
+    useEditorStore.getState().setPreviewGain(dbToGain(db));
   }, []);
 
   const updateGainPreview = useCallback((db) => {
     pendingGainDbRef.current = db;
-    useEditorStore.getState().setPreviewGain(dbToLinearGain(db));
+    useEditorStore.getState().setPreviewGain(dbToGain(db));
   }, []);
 
   // On release: clear the preview, apply a non-zero gain to the selection and reset the slider.
@@ -153,7 +150,7 @@ export function EffectsPanel({
     useEditorStore.getState().setPreviewGain(null);
     isDraggingGainRef.current = false;
     if (db !== 0) {
-      onAdjustVolume(dbToLinearGain(db), true);
+      onAdjustVolume(dbToGain(db), true);
       setGainDb(0);
       pendingGainDbRef.current = 0;
     }
@@ -282,20 +279,15 @@ export function EffectsPanel({
             <div
               style={{
                 ...styles.statusText,
-                backgroundColor: hasNoiseProfile && !isCapturingNoise ? '#1a3a2a' : '#2a1a1a',
-                color: hasNoiseProfile && !isCapturingNoise ? '#66bb6a' : '#8888aa',
+                backgroundColor: showsCapturedProfile ? colors.successBg : colors.inactiveBg,
+                color: showsCapturedProfile ? colors.success : colors.textDim,
               }}
             >
-              {hasNoiseProfile && !isCapturingNoise
-                ? '✓ Noise profile captured'
-                : 'No noise profile captured'}
+              {showsCapturedProfile ? '✓ Noise profile captured' : 'No noise profile captured'}
             </div>
             <div style={{ marginTop: 12 }}>
               <span style={styles.label}>Strength</span>
-              <div style={styles.sliderValue}>
-                {noiseStrength}
-                {'%'}
-              </div>
+              <div style={styles.sliderValue}>{noiseStrength}%</div>
               <input
                 type="range"
                 min={0}

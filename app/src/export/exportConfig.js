@@ -2,6 +2,7 @@
 // rate / MP3 bitrate to legal values, sample-rate option lists, and output-size estimators.
 // Every consumer (settings modal, size previews, export pipeline) goes through
 // normalizeExportConfig so they all agree on what will actually be written.
+import { originalFormat } from '../audio/bufferMeta.js';
 
 // Sample rates offered for WAV export.
 export const EXPORT_SAMPLE_RATES = [8000, 11025, 16000, 22050, 32000, 44100, 48000, 96000];
@@ -44,25 +45,21 @@ export function normalizeExportConfig(config) {
 
 // Sample rates to list in the settings modal; for WAV, a non-standard current rate is merged in.
 export function sampleRateOptions(config) {
-  return config.format === 'mp3'
-    ? MP3_SAMPLE_RATES
-    : EXPORT_SAMPLE_RATES.includes(config.sampleRate)
-      ? EXPORT_SAMPLE_RATES
-      : [...EXPORT_SAMPLE_RATES, config.sampleRate].sort((a, b) => a - b);
+  if (config.format === 'mp3') return MP3_SAMPLE_RATES;
+  if (EXPORT_SAMPLE_RATES.includes(config.sampleRate)) return EXPORT_SAMPLE_RATES;
+  return [...EXPORT_SAMPLE_RATES, config.sampleRate].sort((a, b) => a - b);
 }
 
 // Default export settings for a file: keep its original format, rate, channels and bit depth.
 // Tolerates a null audioBuffer.
 export function defaultExportConfig(audioBuffer, fileName) {
+  const source = audioBuffer ? originalFormat(audioBuffer) : null;
   return {
     format: fileName.split('.').pop()?.toLowerCase() === 'mp3' ? 'mp3' : 'wav',
-    sampleRate: audioBuffer?._originalSampleRate ?? audioBuffer?.sampleRate ?? 44100,
+    sampleRate: source?.sampleRate ?? 44100,
     srcQuality: 'medium',
-    channels:
-      (audioBuffer?._originalChannels ?? audioBuffer?.numberOfChannels ?? 2) === 1
-        ? 'mono'
-        : 'stereo',
-    bitDepth: audioBuffer?._originalBitDepth ?? 24,
+    channels: (source?.channels ?? 2) === 1 ? 'mono' : 'stereo',
+    bitDepth: source?.bitDepth ?? 24,
     bitrate: 192,
     mp3Mode: 'joint',
     lowpass: 18000,

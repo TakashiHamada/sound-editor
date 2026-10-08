@@ -103,9 +103,7 @@ export function HelpDialog() {
         }}
       >
         <span>
-          {BUILD_BRANCH}
-          {' | '}
-          {BUILD_TIME}
+          {BUILD_BRANCH} | {BUILD_TIME}
         </span>
       </div>
       <div
@@ -183,7 +181,7 @@ export function HelpDialog() {
                   fontWeight: 600,
                 }}
               >
-                {'Keyboard Shortcuts & Operations'}
+                Keyboard Shortcuts & Operations
               </span>
               <div
                 style={{
@@ -266,11 +264,8 @@ export function HelpDialog() {
                   borderTop: `1px solid ${colors.border}`,
                 }}
               >
-                {'Press '}
-                <span style={{ fontFamily: 'monospace', color: colors.text }}>F1</span>
-                {' or '}
-                <span style={{ fontFamily: 'monospace', color: colors.text }}>Esc</span>
-                {' to close'}
+                Press <span style={{ fontFamily: 'monospace', color: colors.text }}>F1</span> or{' '}
+                <span style={{ fontFamily: 'monospace', color: colors.text }}>Esc</span> to close
               </div>
             </div>
           </div>

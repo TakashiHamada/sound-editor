@@ -2,8 +2,11 @@
 // zoom, duration, undo-history position, clipboard summary and a live stereo level meter.
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { formatTime } from '../utils/format.js';
 import { getLevels } from '../audio/playback.js';
+import { getSelectionRange } from '../store/editorStore.js';
+import { colors } from '../theme.js';
+import { formatTime } from '../utils/format.js';
+import { Divider } from './Divider.jsx';
 
 // Level at or above which the meter is drawn red (clip warning line).
 const CLIP_LEVEL = 0.9;
@@ -13,29 +16,26 @@ const METER_WIDTH = 120;
 const METER_BAR_HEIGHT = 6;
 // Vertical gap between the left and right channel bars in px.
 const METER_BAR_GAP = 2;
+// A new peak is held for this many frames, then decays by PEAK_DECAY per frame.
+const PEAK_HOLD_FRAMES = 30;
+const PEAK_DECAY = 0.95;
 
 const styles = {
   bar: {
     height: 24,
     minHeight: 24,
-    backgroundColor: '#0f0f1a',
-    borderTop: '1px solid #2a2a4a',
+    backgroundColor: colors.bgDark,
+    borderTop: `1px solid ${colors.border}`,
     display: 'flex',
     alignItems: 'center',
     padding: '0 8px',
     fontFamily: 'monospace',
     fontSize: 11,
-    color: '#8888aa',
+    color: colors.textDim,
     gap: 0,
   },
   item: { padding: '0 10px', whiteSpace: 'nowrap' },
-  divider: {
-    width: 1,
-    height: 14,
-    backgroundColor: '#2a2a4a',
-    flexShrink: 0,
-  },
-  value: { color: '#e0e0e0' },
+  value: { color: colors.text },
   spacer: { flex: 1 },
   meterContainer: {
     display: 'flex',
@@ -45,44 +45,73 @@ const styles = {
   },
 };
 
+// Separator between status items.
+function StatusDivider() {
+  return <Divider height={14} flexShrink={0} />;
+}
+
+// Text colour of the log area: red for errors, green otherwise, grey before the first message.
+function logColor(logMessage) {
+  if (!logMessage) return colors.textEmpty;
+  return logMessage.level === 'error' ? colors.logError : colors.logInfo;
+}
+
+// Selection readout, e.g. "00:01.000 - 00:02.500 (1.500s)".
+function formatSelection({ start, end }) {
+  return `${formatTime(start)} - ${formatTime(end)} (${(end - start).toFixed(3)}s)`;
+}
+
 // Draws one channel bar of the level meter at vertical offset `y`. The meter's full scale is 1.2
 // (20% headroom above 1.0): green up to CLIP_LEVEL, red beyond it, a faint red line marking
 // CLIP_LEVEL, and a 2px peak-hold tick (only drawn once the held peak exceeds 0.01).
 function drawMeterBar(ctx, level, peak, y, width, height) {
   const clipX = (CLIP_LEVEL / 1.2) * width;
   const levelX = Math.min(level / 1.2, 1) * width;
-  ctx.fillStyle = '#1a1a30';
+  ctx.fillStyle = colors.meterBg;
   ctx.fillRect(0, y, width, height);
   if (levelX > 0) {
     const greenWidth = Math.min(levelX, clipX);
     if (greenWidth > 0) {
-      ctx.fillStyle = '#4caf50';
+      ctx.fillStyle = colors.meterLevel;
       ctx.fillRect(0, y, greenWidth, height);
     }
     if (levelX > clipX) {
-      ctx.fillStyle = '#f44336';
+      ctx.fillStyle = colors.meterClip;
       ctx.fillRect(clipX, y, levelX - clipX, height);
     }
   }
-  ctx.fillStyle = 'rgba(255, 68, 68, 0.4)';
+  ctx.fillStyle = colors.meterClipLine;
   ctx.fillRect(clipX, y, 1, height);
   if (peak > 0.01) {
     const peakX = Math.min(peak / 1.2, 1) * width;
-    ctx.fillStyle = peak >= CLIP_LEVEL ? '#f44336' : '#81c784';
+    ctx.fillStyle = peak >= CLIP_LEVEL ? colors.meterClip : colors.meterPeak;
     ctx.fillRect(Math.max(0, peakX - 1), y, 2, height);
   }
 }
 
+// Advances one channel's peak-hold state (`{ peak, holdFrames }`) by a frame with the current
+// `level` and returns the held peak.
+function updatePeak(meter, level) {
+  if (level > meter.peak) {
+    meter.peak = level;
+    meter.holdFrames = 0;
+  } else {
+    meter.holdFrames++;
+    if (meter.holdFrames > PEAK_HOLD_FRAMES) meter.peak *= PEAK_DECAY;
+  }
+  return meter.peak;
+}
+
 // Canvas level meter redrawn every animation frame. While playing it reads the live levels; when
-// stopped it draws zero levels but keeps the last channel count. Peaks are held for 30 frames and
-// then decay by 5% per frame.
+// stopped it draws zero levels but keeps the last channel count.
 function LevelMeter({ isPlaying }) {
   const canvasRef = useRef(null);
   const animationFrameRef = useRef(null);
-  const leftPeakRef = useRef(0);
-  const leftHoldFramesRef = useRef(0);
-  const rightPeakRef = useRef(0);
-  const rightHoldFramesRef = useRef(0);
+  // Peak-hold state of the left and right channel.
+  const metersRef = useRef([
+    { peak: 0, holdFrames: 0 },
+    { peak: 0, holdFrames: 0 },
+  ]);
   const channelCountRef = useRef(1);
   const drawFrame = useCallback(() => {
     const canvas = canvasRef.current;
@@ -97,26 +126,15 @@ function LevelMeter({ isPlaying }) {
     const canvasHeight = isStereo ? METER_BAR_HEIGHT * 2 + METER_BAR_GAP : METER_BAR_HEIGHT;
     canvas.height = canvasHeight;
     canvas.style.height = `${canvasHeight}px`;
-    if (levels.left > leftPeakRef.current) {
-      leftPeakRef.current = levels.left;
-      leftHoldFramesRef.current = 0;
-    } else {
-      leftHoldFramesRef.current++;
-      if (leftHoldFramesRef.current > 30) leftPeakRef.current *= 0.95;
-    }
-    drawMeterBar(ctx, levels.left, leftPeakRef.current, 0, METER_WIDTH, METER_BAR_HEIGHT);
+    const [leftMeter, rightMeter] = metersRef.current;
+    const leftPeak = updatePeak(leftMeter, levels.left);
+    drawMeterBar(ctx, levels.left, leftPeak, 0, METER_WIDTH, METER_BAR_HEIGHT);
     if (isStereo) {
-      if (levels.right > rightPeakRef.current) {
-        rightPeakRef.current = levels.right;
-        rightHoldFramesRef.current = 0;
-      } else {
-        rightHoldFramesRef.current++;
-        if (rightHoldFramesRef.current > 30) rightPeakRef.current *= 0.95;
-      }
+      const rightPeak = updatePeak(rightMeter, levels.right);
       drawMeterBar(
         ctx,
         levels.right,
-        rightPeakRef.current,
+        rightPeak,
         METER_BAR_HEIGHT + METER_BAR_GAP,
         METER_WIDTH,
         METER_BAR_HEIGHT,
@@ -133,7 +151,7 @@ function LevelMeter({ isPlaying }) {
   const stereoHeight = METER_BAR_HEIGHT * 2 + METER_BAR_GAP;
   return (
     <div style={styles.meterContainer}>
-      <span style={{ color: '#8888aa', fontSize: 10 }}>Level</span>
+      <span style={{ color: colors.textDim, fontSize: 10 }}>Level</span>
       <canvas
         ref={canvasRef}
         width={METER_WIDTH}
@@ -156,9 +174,7 @@ export function StatusBar({
   isPlaying,
   logMessage,
 }) {
-  const hasSelection =
-    selectionStart !== null && selectionEnd !== null && selectionStart !== selectionEnd;
-  const selectionLength = hasSelection ? Math.abs(selectionEnd - selectionStart) : 0;
+  const range = getSelectionRange({ selectionStart, selectionEnd });
   const [flashMessage, setFlashMessage] = useState(null);
   // The "Copied to clipboard" flash replaces the log text for 2 seconds.
   useEffect(() => {
@@ -166,6 +182,15 @@ export function StatusBar({
     const timer = setTimeout(() => setFlashMessage(null), 2000);
     return () => clearTimeout(timer);
   }, [flashMessage]);
+  let logContent = 'No log';
+  if (flashMessage) logContent = flashMessage;
+  else if (logMessage)
+    logContent = (
+      <>
+        {logMessage.level === 'error' ? '✘ ' : '✔ '}
+        {logMessage.text}
+      </>
+    );
   return (
     <div style={styles.bar}>
       <div
@@ -177,7 +202,7 @@ export function StatusBar({
           textOverflow: 'ellipsis',
           whiteSpace: 'nowrap',
           cursor: logMessage ? 'pointer' : 'default',
-          color: logMessage ? (logMessage.level === 'error' ? '#f44336' : '#4caf50') : '#555',
+          color: logColor(logMessage),
         }}
         title={logMessage ? 'Click to copy details' : null}
         onClick={() => {
@@ -192,68 +217,45 @@ export function StatusBar({
             );
         }}
       >
-        {flashMessage ? (
-          flashMessage
-        ) : logMessage ? (
-          <>
-            {logMessage.level === 'error' ? '✘ ' : '✔ '}
-            {logMessage.text}
-          </>
-        ) : (
-          'No log'
-        )}
+        {logContent}
       </div>
-      <div style={styles.divider} />
+      <StatusDivider />
       <div style={styles.item}>
-        {'Position: '}
-        <span style={styles.value}>{formatTime(currentTime)}</span>
+        Position: <span style={styles.value}>{formatTime(currentTime)}</span>
       </div>
-      <div style={styles.divider} />
+      <StatusDivider />
       <div style={styles.item}>
-        {hasSelection ? (
+        {range ? (
           <>
-            {'Selection:'}{' '}
-            <span style={styles.value}>
-              {formatTime(selectionStart)}
-              {' - '}
-              {formatTime(selectionEnd)}
-              {' ('}
-              {selectionLength.toFixed(3)}
-              {'s)'}
-            </span>
+            Selection: <span style={styles.value}>{formatSelection(range)}</span>
           </>
         ) : (
           'No selection'
         )}
       </div>
-      <div style={styles.divider} />
+      <StatusDivider />
       <div style={styles.item}>
-        {'Zoom: '}
-        <span style={styles.value}>
-          {Math.round(zoom * 100)}
-          {'%'}
-        </span>
+        Zoom: <span style={styles.value}>{Math.round(zoom * 100)}%</span>
       </div>
-      <div style={styles.divider} />
+      <StatusDivider />
       <div style={styles.item}>
-        {'Duration:'}{' '}
+        Duration:{' '}
         <span style={styles.value}>{formatTime(audioBuffer ? audioBuffer.duration : 0)}</span>
       </div>
-      <div style={styles.divider} />
+      <StatusDivider />
       <div style={styles.item}>
-        {'History:'}{' '}
+        History:{' '}
         <span style={styles.value}>
           {historyLength > 0 ? `${historyIndex} / ${historyLength - 1}` : '--'}
         </span>
       </div>
       {clipboard && (
         <>
-          <div style={styles.divider} />
+          <StatusDivider />
           <div style={styles.item}>
-            {'Clipboard:'}{' '}
+            Clipboard:{' '}
             <span style={styles.value}>
-              {clipboard.buffer.duration.toFixed(1)}
-              {'s '}
+              {clipboard.buffer.duration.toFixed(1)}s{' '}
               {clipboard.numberOfChannels === 1 ? 'mono' : 'stereo'}
             </span>
           </div>

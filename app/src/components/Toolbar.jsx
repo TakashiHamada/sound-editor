@@ -2,18 +2,25 @@
 
 import { useState } from 'react';
 import { colors } from '../theme.js';
+import { Divider } from './Divider.jsx';
 
-// Flat toolbar button. `active` and `accent` render a filled accent background; `accent` buttons
-// also use slightly smaller bold text. Hover is tracked in local state.
-function ToolbarButton({
-  label,
-  onClick,
-  disabled = false,
-  active = false,
-  accent = false,
-  title,
-  minWidth,
-}) {
+// Background and text colour of a toolbar button. Accent buttons are filled with the accent colour
+// (lighter on hover) unless disabled; plain buttons get a subtle background and brighter text on
+// hover.
+function buttonColors({ disabled, accent, hovered }) {
+  let backgroundColor = 'transparent';
+  if (accent && !disabled) backgroundColor = hovered ? colors.accentHover : colors.accent;
+  else if (hovered && !disabled) backgroundColor = colors.borderLight;
+  let color = colors.text;
+  if (disabled) color = colors.textDim;
+  else if (accent) color = colors.bgDark;
+  else if (hovered) color = colors.textBright;
+  return { backgroundColor, color };
+}
+
+// Flat toolbar button. `accent` buttons are filled and use slightly smaller bold text. Hover is
+// tracked in local state.
+function ToolbarButton({ label, onClick, disabled = false, accent = false, title, minWidth }) {
   const [isHovered, setIsHovered] = useState(false);
   return (
     <button
@@ -31,22 +38,7 @@ function ToolbarButton({
         padding: '0 8px',
         border: 'none',
         borderRadius: 3,
-        backgroundColor: active
-          ? colors.accent
-          : accent && !disabled
-            ? isHovered
-              ? colors.accentHover
-              : colors.accent
-            : isHovered && !disabled
-              ? colors.borderLight
-              : 'transparent',
-        color: disabled
-          ? colors.textDim
-          : active || accent
-            ? colors.bgDark
-            : isHovered
-              ? colors.textBright
-              : colors.text,
+        ...buttonColors({ disabled, accent, hovered: isHovered }),
         cursor: disabled ? 'default' : 'pointer',
         fontSize: accent ? 13 : 14,
         fontWeight: accent ? 600 : 'normal',
@@ -63,16 +55,7 @@ function ToolbarButton({
 
 // Thin vertical separator between button groups.
 function ToolbarDivider() {
-  return (
-    <div
-      style={{
-        width: 1,
-        height: 20,
-        backgroundColor: colors.border,
-        margin: '0 8px',
-      }}
-    />
-  );
+  return <Divider height={20} margin="0 8px" />;
 }
 
 export function Toolbar({
@@ -107,7 +90,7 @@ export function Toolbar({
         onClick={onOpenFile}
         title="Open File (Ctrl+O)"
         minWidth={44}
-        accent={true}
+        accent
       />
       <ToolbarButton
         label="Close All"

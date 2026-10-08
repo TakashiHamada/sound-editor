@@ -1,7 +1,6 @@
 // Spectral-subtraction noise reduction: an in-place radix-2 FFT, noise-profile capture from a
 // selection, and the STFT overlap-add denoiser that applies the profile to a buffer.
 import { getAudioContext } from './audioContext.js';
-import { useEditorStore } from '../store/editorStore.js';
 
 // STFT frame length (samples) and hop between frames (75% overlap).
 export const FFT_SIZE = 2048;
@@ -29,7 +28,7 @@ export function fft(real, imag) {
       imag[reversed] = tmp;
     }
     let bit = size >> 1;
-    for (; bit <= reversed; ) {
+    while (bit <= reversed) {
       reversed -= bit;
       bit >>= 1;
     }
@@ -104,8 +103,16 @@ export function captureNoiseProfile(audioBuffer, startTime, endTime) {
 }
 
 // Applies spectral subtraction with the given noise profile to [startTime, endTime) (seconds;
-// whole buffer when undefined) and returns a new AudioBuffer. Reports progress through the store.
-export async function applyNoiseReduction(audioBuffer, noiseProfile, strength, startTime, endTime) {
+// whole buffer when undefined) and returns a new AudioBuffer. Awaits the optional
+// `onProgress(doneFrames, totalFrames)` after every STFT frame.
+export async function applyNoiseReduction(
+  audioBuffer,
+  noiseProfile,
+  strength,
+  startTime,
+  endTime,
+  onProgress,
+) {
   const context = getAudioContext();
   const sampleRate = audioBuffer.sampleRate;
   const amount = Math.max(0, Math.min(1, strength));
@@ -145,7 +152,6 @@ export async function applyNoiseReduction(audioBuffer, noiseProfile, strength, s
     framesPerChannel++;
   const totalFrames = Math.max(1, framesPerChannel * audioBuffer.numberOfChannels);
   let doneFrames = 0;
-  let lastYield = performance.now();
   for (let channel = 0; channel < audioBuffer.numberOfChannels; channel++) {
     const input = audioBuffer.getChannelData(channel);
     const outputData = output.getChannelData(channel);
@@ -198,22 +204,7 @@ export async function applyNoiseReduction(audioBuffer, noiseProfile, strength, s
         }
       }
       doneFrames++;
-      if (performance.now() - lastYield > 30) {
-        const percent = Math.round((doneFrames / totalFrames) * 100);
-        const filledBlocks = Math.round(percent / 5);
-        useEditorStore
-          .getState()
-          .setProcessing(
-            'Applying noise reduction... ' +
-              '█'.repeat(filledBlocks) +
-              '░'.repeat(20 - filledBlocks) +
-              ' ' +
-              percent +
-              '%',
-          );
-        await new Promise((resolve) => setTimeout(resolve));
-        lastYield = performance.now();
-      }
+      await onProgress?.(doneFrames, totalFrames);
     }
     // Normalise by the summed window energy and crossfade one frame at each region edge.
     const crossfadeLength = FFT_SIZE;

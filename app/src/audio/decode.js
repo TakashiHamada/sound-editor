@@ -5,78 +5,104 @@
 import { MPEGDecoder } from 'mpg123-decoder';
 import { getAudioContext } from './audioContext.js';
 
+const ID3V2_MAGIC = 'ID3'; // at offset 0
+const ID3V2_HEADER_SIZE = 10;
+const ID3V2_FOOTER_SIZE = 10;
+const ID3V2_FOOTER_FLAG = 0x10; // header flags byte, bit 4
+const ID3V1_MAGIC = 'TAG';
+const ID3V1_SIZE = 128; // fixed block at the very end of the file
+
+// True if `bytes` holds the ASCII string `text` at `offset`.
+function hasAscii(bytes, offset, text) {
+  for (let i = 0; i < text.length; i++) if (bytes[offset + i] !== text.charCodeAt(i)) return false;
+  return true;
+}
+
+// Locates the ID3 tags in `bytes`. Returns `{ v2, v1, start, end }`: `v2` is `{ version, size }`
+// of a leading ID3v2 tag (size excludes the header) or null, `v1` whether the last 128 bytes are
+// an ID3v1 tag, and `start` / `end` bound the audio data between the tags.
+function findId3Tags(bytes) {
+  let v2 = null;
+  let start = 0;
+  if (bytes.length > ID3V2_HEADER_SIZE && hasAscii(bytes, 0, ID3V2_MAGIC)) {
+    // Tag size: a 28-bit "syncsafe" integer (7 bits per byte) in bytes 6..9.
+    const size = (bytes[6] << 21) | (bytes[7] << 14) | (bytes[8] << 7) | bytes[9];
+    v2 = { version: `${bytes[3]}.${bytes[4]}`, size };
+    start = ID3V2_HEADER_SIZE + size;
+    if (bytes[5] & ID3V2_FOOTER_FLAG) start += ID3V2_FOOTER_SIZE;
+  }
+  const v1 = bytes.length > ID3V1_SIZE && hasAscii(bytes, bytes.length - ID3V1_SIZE, ID3V1_MAGIC);
+  // The ID3v1 block only counts as strippable when more than 128 bytes follow the ID3v2 tag.
+  const end = v1 && bytes.length - start > ID3V1_SIZE ? bytes.length - ID3V1_SIZE : bytes.length;
+  return { v2, v1, start, end };
+}
+
 // Returns `arrayBuffer` without a leading ID3v2 tag and trailing ID3v1 tag (or the same buffer if
 // it has neither).
 function stripId3Tags(arrayBuffer) {
   const bytes = new Uint8Array(arrayBuffer);
-  let start = 0;
-  let end = bytes.length;
-  // 'ID3' header: tag size is a 28-bit "syncsafe" integer (7 bits per byte) in bytes 6..9.
-  if (bytes.length > 10 && bytes[0] === 73 && bytes[1] === 68 && bytes[2] === 51) {
-    start = 10 + ((bytes[6] << 21) | (bytes[7] << 14) | (bytes[8] << 7) | bytes[9]);
-    // Flags bit 4: a 10-byte footer follows the tag.
-    if (bytes[5] & 16) start += 10;
-  }
-  if (end - start > 128) {
-    // ID3v1: a fixed 128-byte block starting with 'TAG' at the end of the file.
-    const tagOffset = end - 128;
-    if (bytes[tagOffset] === 84 && bytes[tagOffset + 1] === 65 && bytes[tagOffset + 2] === 71)
-      end = tagOffset;
-  }
+  const { start, end } = findId3Tags(bytes);
   return start === 0 && end === bytes.length ? arrayBuffer : arrayBuffer.slice(start, end);
 }
 
-// Builds a human-readable report about the file's tags and first MPEG frame header.
-function describeFile(arrayBuffer, fileName) {
-  const bytes = new Uint8Array(arrayBuffer);
-  const lines = [];
-  lines.push(`File: ${fileName}, Size: ${arrayBuffer.byteLength} bytes`);
-  if (bytes.length > 10 && bytes[0] === 73 && bytes[1] === 68 && bytes[2] === 51) {
-    const version = `${bytes[3]}.${bytes[4]}`;
-    const tagSize = (bytes[6] << 21) | (bytes[7] << 14) | (bytes[8] << 7) | bytes[9];
-    lines.push(`ID3v2.${version} tag: ${tagSize} bytes`);
-  } else lines.push('No ID3v2 tag');
-  if (bytes.length > 128) {
-    const tagOffset = bytes.length - 128;
-    if (bytes[tagOffset] === 84 && bytes[tagOffset + 1] === 65 && bytes[tagOffset + 2] === 71)
-      lines.push('ID3v1 tag: present');
+// MPEG audio frame header tables. Sample rates are indexed by the version bits
+// (3 = MPEG-1, 2 = MPEG-2, 0 = MPEG-2.5; 1 is reserved), then by the sample-rate index.
+const MPEG_SAMPLE_RATES = {
+  3: [44100, 48000, 32000],
+  2: [22050, 24000, 16000],
+  0: [11025, 12000, 8000],
+};
+const MPEG_VERSION_NAMES = { 0: 'MPEG-2.5', 2: 'MPEG-2', 3: 'MPEG-1' };
+const MPEG_LAYER_NAMES = { 1: 'Layer III', 2: 'Layer II', 3: 'Layer I' };
+const MPEG_MODE_NAMES = { 0: 'Stereo', 1: 'Joint Stereo', 2: 'Dual Channel', 3: 'Mono' };
+
+// Finds the first MPEG frame sync (11 set bits: 0xFF, then the top 3 bits of the next byte) at an
+// offset below `limit` whose decoded header passes `accept`. Returns the header fields plus its
+// offset, or null. `sampleRate` is undefined for reserved version / sample-rate values.
+function findMpegFrame(bytes, limit, accept = () => true) {
+  for (let offset = 0; offset < Math.min(bytes.length - 4, limit); offset++) {
+    if (bytes[offset] !== 0xff || (bytes[offset + 1] & 0xe0) !== 0xe0) continue;
+    const header =
+      (bytes[offset] << 24) |
+      (bytes[offset + 1] << 16) |
+      (bytes[offset + 2] << 8) |
+      bytes[offset + 3];
+    const versionBits = (header >> 19) & 3;
+    const sampleRateIndex = (header >> 10) & 3;
+    const frame = {
+      offset,
+      versionBits,
+      layerBits: (header >> 17) & 3,
+      bitrateIndex: (header >> 12) & 15,
+      sampleRateIndex,
+      channelMode: (header >> 6) & 3,
+      sampleRate: MPEG_SAMPLE_RATES[versionBits]?.[sampleRateIndex],
+    };
+    if (accept(frame)) return frame;
   }
-  const audioData = stripId3Tags(arrayBuffer);
+  return null;
+}
+
+// Builds a human-readable report about the file's tags and the first MPEG frame header found in
+// `audioData` (the file without its ID3 tags).
+function describeFile(arrayBuffer, fileName, audioData) {
+  const lines = [`File: ${fileName}, Size: ${arrayBuffer.byteLength} bytes`];
+  const tags = findId3Tags(new Uint8Array(arrayBuffer));
+  lines.push(tags.v2 ? `ID3v2.${tags.v2.version} tag: ${tags.v2.size} bytes` : 'No ID3v2 tag');
+  if (tags.v1) lines.push('ID3v1 tag: present');
   const audioBytes = new Uint8Array(audioData);
-  let foundFrame = false;
-  // Look for an MPEG frame sync (11 set bits: 0xFF then the top 3 bits of the next byte) in the
-  // first 8 KB and decode the fields of the 32-bit frame header found there.
-  for (let offset = 0; offset < Math.min(audioBytes.length - 4, 8192); offset++)
-    if (audioBytes[offset] === 255 && (audioBytes[offset + 1] & 224) === 224) {
-      const header =
-        (audioBytes[offset] << 24) |
-        (audioBytes[offset + 1] << 16) |
-        (audioBytes[offset + 2] << 8) |
-        audioBytes[offset + 3];
-      const versionBits = (header >> 19) & 3;
-      const layerBits = (header >> 17) & 3;
-      const bitrateIndex = (header >> 12) & 15;
-      const sampleRateIndex = (header >> 10) & 3;
-      const channelMode = (header >> 6) & 3;
-      const versionNames = { 0: 'MPEG-2.5', 2: 'MPEG-2', 3: 'MPEG-1' };
-      const layerNames = { 1: 'Layer III', 2: 'Layer II', 3: 'Layer I' };
-      const modeNames = { 0: 'Stereo', 1: 'Joint Stereo', 2: 'Dual Channel', 3: 'Mono' };
-      // Sample rates by version bits (3 = MPEG-1, 2 = MPEG-2, 0 = MPEG-2.5), by sample-rate index.
-      const sampleRate = {
-        3: [44100, 48000, 32000],
-        2: [22050, 24000, 16000],
-        0: [11025, 12000, 8000],
-      }[versionBits]?.[sampleRateIndex];
-      lines.push(
-        `Frame at offset ${offset}: ${versionNames[versionBits] ?? `ver=${versionBits}`}, ${layerNames[layerBits] ?? `layer=${layerBits}`}`,
-      );
-      lines.push(
-        `  Sample rate: ${sampleRate ?? `idx=${sampleRateIndex}`} Hz, Mode: ${modeNames[channelMode] ?? channelMode}, Bitrate idx: ${bitrateIndex}`,
-      );
-      foundFrame = true;
-      break;
-    }
-  if (!foundFrame) {
+  // Any sync in the first 8 KB, valid or not.
+  const frame = findMpegFrame(audioBytes, 8192);
+  if (frame) {
+    const version = MPEG_VERSION_NAMES[frame.versionBits] ?? `ver=${frame.versionBits}`;
+    const layer = MPEG_LAYER_NAMES[frame.layerBits] ?? `layer=${frame.layerBits}`;
+    const sampleRate = frame.sampleRate ?? `idx=${frame.sampleRateIndex}`;
+    const mode = MPEG_MODE_NAMES[frame.channelMode] ?? frame.channelMode;
+    lines.push(`Frame at offset ${frame.offset}: ${version}, ${layer}`);
+    lines.push(
+      `  Sample rate: ${sampleRate} Hz, Mode: ${mode}, Bitrate idx: ${frame.bitrateIndex}`,
+    );
+  } else {
     const firstBytes = Array.from(audioBytes.slice(0, 16))
       .map((byte) => byte.toString(16).padStart(2, '0'))
       .join(' ');
@@ -185,29 +211,15 @@ function decodeWithMediaElement(file) {
   });
 }
 
-// Scans for the first valid MPEG frame header and returns its sample rate, or null.
+// Sample rate of the first valid MPEG frame header in the first 64 KB of `bytes`, or null.
+// Layer bits 0 and reserved version / sample-rate values mark a false sync.
 function detectMpegSampleRate(bytes) {
-  for (let offset = 0; offset < Math.min(bytes.length - 4, 65536); offset++) {
-    if (bytes[offset] === 255 && (bytes[offset + 1] & 224) === 224) {
-      const header =
-        (bytes[offset] << 24) |
-        (bytes[offset + 1] << 16) |
-        (bytes[offset + 2] << 8) |
-        bytes[offset + 3];
-      const versionBits = (header >> 19) & 3;
-      const layerBits = (header >> 17) & 3;
-      const sampleRateIndex = (header >> 10) & 3;
-      const rates = {
-        3: [44100, 48000, 32000],
-        2: [22050, 24000, 16000],
-        0: [11025, 12000, 8000],
-      }[versionBits];
-      // Version 1, layer 0 and sample-rate index 3 are reserved values (false sync).
-      if (versionBits !== 1 && layerBits !== 0 && sampleRateIndex !== 3 && rates)
-        return rates[sampleRateIndex];
-    }
-  }
-  return null;
+  const frame = findMpegFrame(
+    bytes,
+    65536,
+    ({ layerBits, sampleRate }) => layerBits !== 0 && sampleRate !== undefined,
+  );
+  return frame ? frame.sampleRate : null;
 }
 
 // Decodes a File into an AudioBuffer, trying each strategy in turn.
@@ -216,8 +228,6 @@ export async function decodeAudioFile(file) {
   if (context.state === 'suspended') await context.resume();
   const arrayBuffer = await file.arrayBuffer();
   const diagnostics = [];
-  const analysis = describeFile(arrayBuffer, file.name);
-  diagnostics.push('[File Analysis]\n' + analysis);
 
   // [1] Native decode of the raw file.
   try {
@@ -291,6 +301,7 @@ export async function decodeAudioFile(file) {
     diagnostics.push(`[5] mpg123 WASM: ${error.message}`);
   }
 
-  const report = diagnostics.join('\n');
+  const analysis = describeFile(arrayBuffer, file.name, stripped);
+  const report = [`[File Analysis]\n${analysis}`, ...diagnostics].join('\n');
   throw new Error(`Unable to decode "${file.name}".\n\n${report}`);
 }

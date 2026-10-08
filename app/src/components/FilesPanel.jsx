@@ -3,17 +3,18 @@
 // predicted export size.
 import { useState, useRef, useMemo, useEffect } from 'react';
 import { colors } from '../theme.js';
-import { formatTime, formatBytes } from '../utils/format.js';
+import { useEditorStore } from '../store/editorStore.js';
+import { useFileDrop } from '../hooks/useFileDrop.js';
+import { originalFormat } from '../audio/bufferMeta.js';
+import { formatTime, formatBytes, formatBitDepth } from '../utils/format.js';
 import { defaultExportConfig, estimateOutputBytes } from '../export/exportConfig.js';
-
-const panelColors = { ...colors, accentDim: '#2a6a8a' };
 
 const styles = {
   panel: {
     width: 220,
     minWidth: 220,
-    backgroundColor: panelColors.bgPanel,
-    borderRight: `1px solid ${panelColors.border}`,
+    backgroundColor: colors.bgPanel,
+    borderRight: `1px solid ${colors.border}`,
     display: 'flex',
     flexDirection: 'column',
     height: '100%',
@@ -21,11 +22,11 @@ const styles = {
   },
   header: {
     padding: '8px 12px',
-    backgroundColor: panelColors.bgDark,
-    borderBottom: `1px solid ${panelColors.border}`,
+    backgroundColor: colors.bgDark,
+    borderBottom: `1px solid ${colors.border}`,
     fontSize: 12,
     fontWeight: 600,
-    color: panelColors.text,
+    color: colors.text,
     textTransform: 'uppercase',
     letterSpacing: '0.5px',
     display: 'flex',
@@ -39,7 +40,7 @@ const styles = {
     padding: '6px 12px',
     cursor: 'pointer',
     fontSize: 12,
-    borderBottom: `1px solid ${panelColors.border}`,
+    borderBottom: `1px solid ${colors.border}`,
     gap: 6,
     transition: 'background-color 0.1s',
   },
@@ -56,7 +57,7 @@ const styles = {
     alignItems: 'center',
     justifyContent: 'center',
     fontSize: 12,
-    color: panelColors.textDim,
+    color: colors.textDim,
     cursor: 'pointer',
     borderRadius: 3,
     flexShrink: 0,
@@ -64,16 +65,16 @@ const styles = {
     background: 'none',
     padding: 0,
   },
-  infoSection: { borderTop: `1px solid ${panelColors.border}` },
+  infoSection: { borderTop: `1px solid ${colors.border}` },
   content: { padding: '12px' },
   noFile: {
-    color: panelColors.textDim,
+    color: colors.textDim,
     fontSize: 12,
     textAlign: 'center',
     marginTop: 20,
   },
   fileNameInfo: {
-    color: panelColors.accent,
+    color: colors.accent,
     fontSize: 13,
     fontWeight: 500,
     marginBottom: 12,
@@ -86,16 +87,16 @@ const styles = {
     justifyContent: 'space-between',
     alignItems: 'center',
     padding: '4px 0',
-    borderBottom: `1px solid ${panelColors.border}`,
+    borderBottom: `1px solid ${colors.border}`,
   },
-  label: { color: panelColors.textDim, fontSize: 11 },
-  value: { color: panelColors.text, fontSize: 11, fontFamily: 'monospace' },
+  label: { color: colors.textDim, fontSize: 11 },
+  value: { color: colors.text, fontSize: 11, fontFamily: 'monospace' },
   renameInput: {
     flex: 1,
-    background: panelColors.bgDark,
-    border: `1px solid ${panelColors.accent}`,
+    background: colors.bgDark,
+    border: `1px solid ${colors.accent}`,
     borderRadius: 2,
-    color: panelColors.text,
+    color: colors.text,
     fontSize: 12,
     padding: '1px 4px',
     outline: 'none',
@@ -111,22 +112,55 @@ const styles = {
   },
   exportBtn: {
     border: 'none',
-    backgroundColor: panelColors.accent,
-    color: '#0f0f1a',
+    backgroundColor: colors.accent,
+    color: colors.bgDark,
     fontWeight: 600,
   },
   settingsBtn: {
-    border: `1px solid ${panelColors.border}`,
-    backgroundColor: panelColors.bgDark,
-    color: panelColors.textDim,
+    border: `1px solid ${colors.border}`,
+    backgroundColor: colors.bgDark,
+    color: colors.textDim,
   },
   settingsBtnActive: {
-    border: '1px solid #ffd54f',
-    backgroundColor: '#ffd54f',
-    color: '#0f0f1a',
+    border: `1px solid ${colors.selection}`,
+    backgroundColor: colors.selection,
+    color: colors.bgDark,
     fontWeight: 600,
   },
 };
+
+// Inline file-name editor. Enter and blur commit (`onCommit('enter' | 'blur')`), Escape cancels.
+// Double-clicks stay inside so selecting a word does not restart the rename;
+// `stopClickPropagation` also keeps single clicks away from a parent that selects on click.
+function RenameInput({ value, onChange, onCommit, onCancel, stopClickPropagation = false }) {
+  return (
+    <input
+      style={styles.renameInput}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      onBlur={() => onCommit('blur')}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') onCommit('enter');
+        else if (e.key === 'Escape') onCancel();
+      }}
+      autoFocus
+      onClick={stopClickPropagation ? (e) => e.stopPropagation() : undefined}
+      onDoubleClick={(e) => e.stopPropagation()}
+    />
+  );
+}
+
+// Bottom "Preview" row: predicted size of `file` exported with the current (or default) settings.
+function SizePreview({ file, exportConfig }) {
+  const config = exportConfig ?? defaultExportConfig(file.audioBuffer, file.fileName);
+  const estimatedBytes = estimateOutputBytes(config, file.audioBuffer.duration);
+  return (
+    <div style={{ ...styles.row, marginTop: 8 }}>
+      <span style={styles.label}>Preview</span>
+      <span style={styles.value}>{formatBytes(Math.round(estimatedBytes))}</span>
+    </div>
+  );
+}
 
 export function FilesPanel({
   files,
@@ -141,6 +175,7 @@ export function FilesPanel({
   exportConfig,
   onFilesDrop,
 }) {
+  const maxFiles = useEditorStore((state) => state.maxFiles);
   const [renamingId, setRenamingId] = useState(null);
   // Which rename input is open: 'list' (file list row) or 'info' (File Info header).
   const [renameSource, setRenameSource] = useState('list');
@@ -148,13 +183,15 @@ export function FilesPanel({
   renameSourceRef.current = renameSource;
   const [renameText, setRenameText] = useState('');
   const [hoveredCloseId, setHoveredCloseId] = useState(null);
-  const [dragOver, setDragOver] = useState(false);
+  const { isDragOver, dropHandlers } = useFileDrop(onFilesDrop, { ignoreLeaveIntoChildren: true });
   // Pending single-click selection; cancelled when the click turns out to be a double-click.
   const clickTimerRef = useRef(null);
   // When the list rename input was opened; a blur within 200ms of that is ignored.
   const renameStartedAtRef = useRef(0);
   const fileEntries = useMemo(() => Array.from(files.entries()), [files]);
   const activeFile = activeFileId ? (files.get(activeFileId) ?? null) : null;
+  const activeBuffer = activeFile?.audioBuffer;
+  const activeFormat = activeBuffer ? originalFormat(activeBuffer) : null;
 
   // Select after 250ms so that a double-click (rename) can cancel the pending selection.
   const handleItemClick = (id) => {
@@ -191,66 +228,29 @@ export function FilesPanel({
     setRenamingId(null);
   };
 
-  const handlePanelDragOver = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragOver(true);
-  };
-
-  const handlePanelDragLeave = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (!e.currentTarget.contains(e.relatedTarget)) setDragOver(false);
-  };
-
-  const handlePanelDrop = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragOver(false);
-    const droppedFiles = e.dataTransfer.files;
-    if (droppedFiles && droppedFiles.length > 0 && onFilesDrop)
-      onFilesDrop(Array.from(droppedFiles));
-  };
-
-  // Bottom "Preview" row: predicted size of the exported file with the current (or default)
-  // export settings. Called inline at its position in the tree, like the original IIFE.
-  const renderSizePreview = () => {
-    const config = exportConfig ?? defaultExportConfig(activeFile.audioBuffer, activeFile.fileName);
-    const estimatedBytes = estimateOutputBytes(config, activeFile.audioBuffer.duration);
-    return (
-      <div style={{ ...styles.row, marginTop: 8 }}>
-        <span style={styles.label}>Preview</span>
-        <span style={styles.value}>{formatBytes(Math.round(estimatedBytes))}</span>
-      </div>
-    );
-  };
+  const cancelRename = () => setRenamingId(null);
 
   return (
     <div
       style={{
         ...styles.panel,
-        outline: dragOver ? '2px dashed #4fc3f7' : 'none',
+        outline: isDragOver ? `2px dashed ${colors.accent}` : 'none',
         outlineOffset: '-2px',
       }}
-      onDragOver={handlePanelDragOver}
-      onDragLeave={handlePanelDragLeave}
-      onDrop={handlePanelDrop}
+      {...dropHandlers}
     >
       <div style={styles.header}>
         <span>Files</span>
-        <span style={{ fontSize: 10, color: panelColors.textDim }}>
-          {files.size}
-          {'/8'}
+        <span style={{ fontSize: 10, color: colors.textDim }}>
+          {files.size}/{maxFiles}
         </span>
       </div>
       <div style={styles.fileList}>
         {fileEntries.length === 0 ? (
           <div style={styles.noFile}>
-            {'No file loaded'}
+            No file loaded
             <br />
-            <span style={{ fontSize: 11, color: panelColors.textDim }}>
-              {'Ctrl+O or drag & drop'}
-            </span>
+            <span style={{ fontSize: 11, color: colors.textDim }}>Ctrl+O or drag & drop</span>
           </div>
         ) : (
           fileEntries.map(([id, file]) => {
@@ -260,26 +260,19 @@ export function FilesPanel({
                 key={id}
                 style={{
                   ...styles.fileItem,
-                  backgroundColor: isActive ? panelColors.accentDim : 'transparent',
-                  color: isActive ? panelColors.text : panelColors.textDim,
+                  backgroundColor: isActive ? colors.accentDim : 'transparent',
+                  color: isActive ? colors.text : colors.textDim,
                 }}
                 onClick={() => handleItemClick(id)}
                 onDoubleClick={() => handleItemDoubleClick(id, file.fileName)}
               >
                 {renamingId === id && renameSource === 'list' ? (
-                  <input
-                    style={styles.renameInput}
+                  <RenameInput
                     value={renameText}
-                    onChange={(e) => setRenameText(e.target.value)}
-                    onBlur={() => commitRename('blur')}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') commitRename('enter');
-                      if (e.key === 'Escape') setRenamingId(null);
-                    }}
-                    autoFocus={true}
-                    onClick={(e) => e.stopPropagation()}
-                    // Double-click selects a word; it must not restart the rename.
-                    onDoubleClick={(e) => e.stopPropagation()}
+                    onChange={setRenameText}
+                    onCommit={commitRename}
+                    onCancel={cancelRename}
+                    stopClickPropagation
                   />
                 ) : (
                   <span style={styles.fileName} title={file.fileName}>
@@ -290,8 +283,8 @@ export function FilesPanel({
                 <button
                   style={{
                     ...styles.closeBtn,
-                    color: hoveredCloseId === id ? panelColors.text : panelColors.textDim,
-                    backgroundColor: hoveredCloseId === id ? panelColors.border : 'transparent',
+                    color: hoveredCloseId === id ? colors.text : colors.textDim,
+                    backgroundColor: hoveredCloseId === id ? colors.border : 'transparent',
                   }}
                   onClick={(e) => {
                     e.stopPropagation();
@@ -301,7 +294,7 @@ export function FilesPanel({
                   onMouseLeave={() => setHoveredCloseId(null)}
                   title="Close file"
                 >
-                  {'×'}
+                  ×
                 </button>
               </div>
             );
@@ -323,17 +316,11 @@ export function FilesPanel({
                 }}
               >
                 {renamingId === activeFile.id && renameSource === 'info' ? (
-                  <input
-                    autoFocus={true}
+                  <RenameInput
                     value={renameText}
-                    onChange={(e) => setRenameText(e.target.value)}
-                    onBlur={() => commitRename('blur')}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') commitRename('enter');
-                      else if (e.key === 'Escape') setRenamingId(null);
-                    }}
-                    onDoubleClick={(e) => e.stopPropagation()}
-                    style={styles.renameInput}
+                    onChange={setRenameText}
+                    onCommit={commitRename}
+                    onCancel={cancelRename}
                   />
                 ) : (
                   activeFile.fileName
@@ -341,53 +328,35 @@ export function FilesPanel({
               </div>
               <div style={styles.row}>
                 <span style={styles.label}>Duration</span>
-                <span style={styles.value}>{formatTime(activeFile.audioBuffer.duration)}</span>
+                <span style={styles.value}>{formatTime(activeBuffer.duration)}</span>
               </div>
               <div style={styles.row}>
                 <span style={styles.label}>Sample Rate</span>
-                <span style={styles.value}>
-                  {activeFile.audioBuffer._originalSampleRate ?? activeFile.audioBuffer.sampleRate}
-                  {' Hz'}
-                </span>
+                <span style={styles.value}>{activeFormat.sampleRate} Hz</span>
               </div>
               <div style={styles.row}>
                 <span style={styles.label}>Channels</span>
-                <span style={styles.value}>
-                  {(activeFile.audioBuffer._originalChannels ??
-                    activeFile.audioBuffer.numberOfChannels) === 1
-                    ? 'Mono'
-                    : 'Stereo'}
-                </span>
+                <span style={styles.value}>{activeFormat.channels === 1 ? 'Mono' : 'Stereo'}</span>
               </div>
               <div style={styles.row}>
                 <span style={styles.label}>Bit Depth</span>
-                <span style={styles.value}>
-                  {activeFile.audioBuffer._originalBitDepth
-                    ? activeFile.audioBuffer._originalBitDepth + '-bit'
-                    : '32-bit float'}
-                </span>
+                <span style={styles.value}>{formatBitDepth(activeFormat.bitDepth)}</span>
               </div>
               <div style={styles.row}>
                 <span style={styles.label}>Samples</span>
                 <span style={styles.value}>
-                  {(activeFile.audioBuffer._originalSampleRate
-                    ? Math.round(
-                        activeFile.audioBuffer.duration *
-                          activeFile.audioBuffer._originalSampleRate,
-                      )
-                    : activeFile.audioBuffer.length
-                  ).toLocaleString()}
+                  {/* Counted at the source rate: the decoder may have resampled the file. */}
+                  {Math.round(activeBuffer.duration * activeFormat.sampleRate).toLocaleString()}
                 </span>
               </div>
               <div style={styles.row}>
                 <span style={styles.label}>Size</span>
                 <span style={styles.value}>
-                  {activeFile.audioBuffer._originalFileSize
-                    ? formatBytes(activeFile.audioBuffer._originalFileSize)
-                    : // Fallback: in-memory size of the decoded 32-bit float samples.
-                      formatBytes(
-                        activeFile.audioBuffer.length * activeFile.audioBuffer.numberOfChannels * 4,
-                      )}
+                  {/* Fallback: in-memory size of the decoded 32-bit float samples. */}
+                  {formatBytes(
+                    activeBuffer._originalFileSize ||
+                      activeBuffer.length * activeBuffer.numberOfChannels * 4,
+                  )}
                 </span>
               </div>
               <div style={{ display: 'flex', gap: 4, marginTop: 12 }}>
@@ -396,10 +365,10 @@ export function FilesPanel({
                   style={{ ...styles.actionBtnBase, ...styles.exportBtn }}
                   title="Export (Ctrl+Shift+E)"
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.backgroundColor = '#81d4fa';
+                    e.currentTarget.style.backgroundColor = colors.accentHover;
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.backgroundColor = panelColors.accent;
+                    e.currentTarget.style.backgroundColor = colors.accent;
                   }}
                 >
                   Export
@@ -412,32 +381,31 @@ export function FilesPanel({
                   }}
                   title="Export settings"
                 >
-                  {'Settings'}
-                  {hasCustomExportSettings ? '*' : ''}
+                  Settings{hasCustomExportSettings ? '*' : ''}
                 </button>
                 {hasCustomExportSettings && (
                   <button
                     onClick={onResetExportSettings}
                     style={{
                       ...styles.closeBtn,
-                      color: panelColors.textDim,
+                      color: colors.textDim,
                       backgroundColor: 'transparent',
                     }}
                     title="Reset settings"
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.color = panelColors.text;
-                      e.currentTarget.style.backgroundColor = panelColors.border;
+                      e.currentTarget.style.color = colors.text;
+                      e.currentTarget.style.backgroundColor = colors.border;
                     }}
                     onMouseLeave={(e) => {
-                      e.currentTarget.style.color = panelColors.textDim;
+                      e.currentTarget.style.color = colors.textDim;
                       e.currentTarget.style.backgroundColor = 'transparent';
                     }}
                   >
-                    {'×'}
+                    ×
                   </button>
                 )}
               </div>
-              {renderSizePreview()}
+              <SizePreview file={activeFile} exportConfig={exportConfig} />
             </>
           ) : (
             <div style={{ ...styles.noFile, marginTop: 8 }}>No file selected</div>

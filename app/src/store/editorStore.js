@@ -6,6 +6,19 @@ import { getAudioContext } from '../audio/audioContext.js';
 import { copyOriginalMeta } from '../audio/bufferMeta.js';
 import { cloneAudioBuffer } from '../audio/bufferOps.js';
 
+// Zoom limits: 1 = the whole file fits the view.
+export const MIN_ZOOM = 1;
+export const MAX_ZOOM = 1000;
+
+// The selection of `file` (anything with selectionStart / selectionEnd) as `{ start, end }` with
+// start < end, or null when there is no selection or it is empty (zero length).
+export function getSelectionRange(file) {
+  const start = file?.selectionStart;
+  const end = file?.selectionEnd;
+  if (start == null || end == null || start === end) return null;
+  return { start: Math.min(start, end), end: Math.max(start, end) };
+}
+
 // Returns a new Map with `patch` merged into file `id`, or the same Map if the file is missing.
 function updateFile(files, id, patch) {
   const file = files.get(id);
@@ -58,7 +71,7 @@ export const useEditorStore = create((set, get) => ({
       fileName,
       selectionStart: null,
       selectionEnd: null,
-      zoom: 1,
+      zoom: MIN_ZOOM,
       scrollX: 0,
       currentTime: 0,
       noiseProfile: null,
@@ -121,20 +134,19 @@ export const useEditorStore = create((set, get) => ({
       if (start !== null) start = Math.max(0, Math.min(duration, start));
       if (end !== null) end = Math.max(0, Math.min(duration, end));
     }
+    if (start !== null && end !== null && start > end) [start, end] = [end, start];
     if (activeFileId)
-      set(
-        start !== null && end !== null && start > end
-          ? { files: updateFile(files, activeFileId, { selectionStart: end, selectionEnd: start }) }
-          : {
-              files: updateFile(files, activeFileId, { selectionStart: start, selectionEnd: end }),
-            },
-      );
+      set({ files: updateFile(files, activeFileId, { selectionStart: start, selectionEnd: end }) });
   },
 
   setZoom: (zoom) => {
     const { activeFileId, files } = get();
     if (activeFileId)
-      set({ files: updateFile(files, activeFileId, { zoom: Math.max(1, Math.min(1000, zoom)) }) });
+      set({
+        files: updateFile(files, activeFileId, {
+          zoom: Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoom)),
+        }),
+      });
   },
 
   setScrollX: (scrollX) => {

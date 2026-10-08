@@ -2,10 +2,9 @@
 // currently visible time range, rendered on a HiDPI-aware canvas.
 
 import { useEffect, useRef } from 'react';
+import { colors } from '../../theme.js';
 import { formatTime } from '../../utils/format.js';
-
-// Canvas height in CSS px (matches RULER_HEIGHT in WaveformView).
-const RULER_CANVAS_HEIGHT = 24;
+import { RULER_HEIGHT } from './layout.js';
 
 // Picks a major tick interval (seconds) and the number of minor subdivisions per major tick so that
 // roughly 8 or fewer major ticks span `visibleDuration`.
@@ -45,12 +44,12 @@ export function TimeRuler({ duration, zoom, scrollX, width }) {
     if (!canvas) return;
     const pixelRatio = window.devicePixelRatio || 1;
     canvas.width = width * pixelRatio;
-    canvas.height = RULER_CANVAS_HEIGHT * pixelRatio;
+    canvas.height = RULER_HEIGHT * pixelRatio;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     ctx.scale(pixelRatio, pixelRatio);
-    ctx.fillStyle = '#0f0f1a';
-    ctx.fillRect(0, 0, width, RULER_CANVAS_HEIGHT);
+    ctx.fillStyle = colors.bgDark;
+    ctx.fillRect(0, 0, width, RULER_HEIGHT);
     if (duration <= 0) return;
     const totalWidth = width * zoom;
     const visibleDuration = duration / zoom;
@@ -71,26 +70,26 @@ export function TimeRuler({ duration, zoom, scrollX, width }) {
       if (x < -50 || x > width + 50) continue;
       if (Math.abs(Math.round(tickTime / major) * major - tickTime) < minorStep * 0.01) {
         // Major tick: taller line plus a time label.
-        ctx.strokeStyle = '#8888aa';
+        ctx.strokeStyle = colors.textDim;
         ctx.lineWidth = 1;
         ctx.beginPath();
         ctx.moveTo(x, 14);
-        ctx.lineTo(x, 24);
+        ctx.lineTo(x, RULER_HEIGHT);
         ctx.stroke();
-        ctx.fillStyle = '#e0e0e0';
+        ctx.fillStyle = colors.text;
         ctx.fillText(formatTime(tickTime), x + 3, 3);
       } else {
         // Minor tick.
-        ctx.strokeStyle = '#444466';
+        ctx.strokeStyle = colors.rulerMinorTick;
         ctx.lineWidth = 1;
         ctx.beginPath();
         ctx.moveTo(x, 19);
-        ctx.lineTo(x, 24);
+        ctx.lineTo(x, RULER_HEIGHT);
         ctx.stroke();
       }
     }
-    // Bottom border line.
-    ctx.strokeStyle = '#2a2a4a';
+    // Bottom border line (centred on the last pixel row).
+    ctx.strokeStyle = colors.border;
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(0, 23.5);
@@ -98,6 +97,9 @@ export function TimeRuler({ duration, zoom, scrollX, width }) {
     ctx.stroke();
   }, [duration, zoom, scrollX, width]);
   return (
-    <canvas ref={canvasRef} style={{ width: `${width}px`, height: '24px', display: 'block' }} />
+    <canvas
+      ref={canvasRef}
+      style={{ width: `${width}px`, height: `${RULER_HEIGHT}px`, display: 'block' }}
+    />
   );
 }

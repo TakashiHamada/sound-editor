@@ -2,7 +2,6 @@
 // dialog is open (`enabled` false) and while a long task shows the processing overlay. Only the
 // first matching shortcut fires; matched keys have their default action prevented.
 import { useEffect } from 'react';
-import { seekTo, setSelectionEdge } from '../selection/selectionActions.js';
 import { useEditorStore } from '../store/editorStore.js';
 
 export function useKeyboardShortcuts(handlers, enabled = true) {
@@ -62,13 +61,13 @@ export function useKeyboardShortcuts(handlers, enabled = true) {
       } else if (event.key === 'Home') {
         // Home: jump to start; Shift+Home: extend the selection to the start.
         event.preventDefault();
-        if (event.shiftKey) setSelectionEdge('start', 0);
-        else seekTo(0);
+        if (event.shiftKey) handlers.onSelectToStart();
+        else handlers.onJumpToStart();
       } else if (event.key === 'End') {
-        // End: jump to end; Shift+End: extend the selection to the end (clamped to duration).
+        // End: jump to end; Shift+End: extend the selection to the end.
         event.preventDefault();
-        if (event.shiftKey) setSelectionEdge('end', Infinity);
-        else seekTo(Infinity);
+        if (event.shiftKey) handlers.onSelectToEnd();
+        else handlers.onJumpToEnd();
       } else if (event.key === 'ArrowLeft') {
         event.preventDefault();
         handlers.onMoveLeft();

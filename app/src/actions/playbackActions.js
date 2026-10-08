@@ -1,5 +1,5 @@
 // Transport actions: play/pause toggle and stop (which also rewinds to the start).
-import { useEditorStore } from '../store/editorStore.js';
+import { getSelectionRange, useEditorStore } from '../store/editorStore.js';
 import { startPlayback, stopPlayback } from '../audio/playback.js';
 
 // Pauses if playing. Otherwise plays the selection (if any) or from the playhead; a playhead
@@ -13,25 +13,20 @@ export function togglePlayback() {
     state.setPlaying(false);
     return;
   }
-  const offset =
-    activeFile.selectionStart ??
-    (activeFile.currentTime >= activeFile.audioBuffer.duration - 0.001
-      ? 0
-      : activeFile.currentTime);
-  const duration =
-    activeFile.selectionStart !== null && activeFile.selectionEnd !== null
-      ? activeFile.selectionEnd - activeFile.selectionStart
-      : undefined;
+  const range = getSelectionRange(activeFile);
+  let offset = activeFile.currentTime;
+  if (range) offset = range.start;
+  else if (activeFile.currentTime >= activeFile.audioBuffer.duration - 0.001) offset = 0;
   startPlayback(
     activeFile.audioBuffer,
     offset,
-    duration,
+    range ? range.end - range.start : undefined,
     (time) => useEditorStore.getState().setCurrentTime(time),
     () => {
       const endedState = useEditorStore.getState();
       endedState.setPlaying(false);
       const file = endedState.getActiveFile();
-      if (file) endedState.setCurrentTime(file.selectionStart ?? 0);
+      if (file) endedState.setCurrentTime(getSelectionRange(file)?.start ?? 0);
     },
   );
   state.setPlaying(true);

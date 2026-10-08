@@ -1,7 +1,7 @@
 // Editing actions on the active file: undo/redo, clipboard (copy/cut/paste/delete), select all,
 // volume, fades and noise reduction. Every buffer change goes through `commitEdit` so it is
 // recorded in the file's undo history.
-import { useEditorStore } from '../store/editorStore.js';
+import { getSelectionRange, useEditorStore } from '../store/editorStore.js';
 import {
   extractRange,
   deleteRange,
@@ -10,10 +10,12 @@ import {
   applyFadeOut,
   resample,
   toMono,
+  toStereo,
   insertBuffer,
-  monoToStereo,
 } from '../audio/bufferOps.js';
 import { FFT_SIZE, captureNoiseProfile, applyNoiseReduction } from '../audio/noiseReduction.js';
+import { formatDb, gainToDb } from '../utils/format.js';
+import { createProgressReporter } from './progress.js';
 import { runWithProcessing } from './runWithProcessing.js';
 
 // Pushes `buffer` onto the undo history and makes it the active file's audio.
@@ -35,17 +37,10 @@ export function redo() {
   state.log('Redo');
 }
 
-// Copies the selected range of the active file into the store clipboard (no logging).
-function copySelectionToClipboard() {
-  const state = useEditorStore.getState();
-  const activeFile = state.getActiveFile();
-  if (!activeFile || activeFile.selectionStart === null || activeFile.selectionEnd === null) return;
-  const buffer = extractRange(
-    activeFile.audioBuffer,
-    activeFile.selectionStart,
-    activeFile.selectionEnd,
-  );
-  state.setClipboard({
+// Copies `range` of the active file's audio into the store clipboard (no logging).
+function copyRangeToClipboard(activeFile, range) {
+  const buffer = extractRange(activeFile.audioBuffer, range.start, range.end);
+  useEditorStore.getState().setClipboard({
     buffer,
     sampleRate: buffer.sampleRate,
     numberOfChannels: buffer.numberOfChannels,
@@ -55,21 +50,21 @@ function copySelectionToClipboard() {
 export function copySelection() {
   const state = useEditorStore.getState();
   const activeFile = state.getActiveFile();
-  copySelectionToClipboard();
-  if (activeFile && activeFile.selectionStart !== null && activeFile.selectionEnd !== null)
-    state.log(`Copied ${(activeFile.selectionEnd - activeFile.selectionStart).toFixed(2)}s`);
+  const range = getSelectionRange(activeFile);
+  if (!range) return;
+  copyRangeToClipboard(activeFile, range);
+  state.log(`Copied ${(range.end - range.start).toFixed(2)}s`);
 }
 
 export function cutSelection() {
   const state = useEditorStore.getState();
   const activeFile = state.getActiveFile();
-  if (!activeFile || activeFile.selectionStart === null || activeFile.selectionEnd === null) return;
-  copySelectionToClipboard();
-  commitEdit(
-    deleteRange(activeFile.audioBuffer, activeFile.selectionStart, activeFile.selectionEnd),
-  );
+  const range = getSelectionRange(activeFile);
+  if (!range) return;
+  copyRangeToClipboard(activeFile, range);
+  commitEdit(deleteRange(activeFile.audioBuffer, range.start, range.end));
   state.setSelection(null, null);
-  state.log(`Cut ${(activeFile.selectionEnd - activeFile.selectionStart).toFixed(2)}s`);
+  state.log(`Cut ${(range.end - range.start).toFixed(2)}s`);
 }
 
 // Inserts the clipboard at the selection start (or playhead), converting its sample rate and
@@ -85,9 +80,9 @@ export async function pasteClipboard() {
     const targetChannels = activeFile.audioBuffer.numberOfChannels;
     if (clip.numberOfChannels !== targetChannels) {
       if (targetChannels === 1 && clip.numberOfChannels > 1) clip = toMono(clip);
-      else if (targetChannels === 2 && clip.numberOfChannels === 1) clip = monoToStereo(clip);
+      else if (targetChannels === 2 && clip.numberOfChannels === 1) clip = toStereo(clip);
     }
-    const insertAt = activeFile.selectionStart ?? activeFile.currentTime;
+    const insertAt = getSelectionRange(activeFile)?.start ?? activeFile.currentTime;
     commitEdit(insertBuffer(activeFile.audioBuffer, clip, insertAt));
     const pastedDuration = clip.length / activeFile.audioBuffer.sampleRate;
     useEditorStore.getState().setSelection(insertAt, insertAt + pastedDuration);
@@ -100,11 +95,10 @@ export async function pasteClipboard() {
 export function deleteSelection() {
   const state = useEditorStore.getState();
   const activeFile = state.getActiveFile();
-  if (!activeFile || activeFile.selectionStart === null || activeFile.selectionEnd === null) return;
-  state.log(`Deleted ${(activeFile.selectionEnd - activeFile.selectionStart).toFixed(2)}s`);
-  commitEdit(
-    deleteRange(activeFile.audioBuffer, activeFile.selectionStart, activeFile.selectionEnd),
-  );
+  const range = getSelectionRange(activeFile);
+  if (!range) return;
+  state.log(`Deleted ${(range.end - range.start).toFixed(2)}s`);
+  commitEdit(deleteRange(activeFile.audioBuffer, range.start, range.end));
   state.setSelection(null, null);
 }
 
@@ -114,55 +108,32 @@ export function selectAll() {
   if (activeFile) state.setSelection(0, activeFile.audioBuffer.duration);
 }
 
-// "+6.0 dB" / "-3.5 dB" for a linear gain factor.
-function formatGainDb(gain) {
-  const db = 20 * Math.log10(gain);
-  return `${db >= 0 ? '+' : '-'}${Math.abs(db).toFixed(1)} dB`;
-}
-
 // Applies a linear gain factor to the selection (when `selectionOnly` and a selection exists)
 // or to the whole file.
 export function adjustVolume(gain, selectionOnly) {
   const activeFile = useEditorStore.getState().getActiveFile();
-  if (activeFile) {
-    const hasSelection =
-      selectionOnly && activeFile.selectionStart !== null && activeFile.selectionEnd !== null;
-    commitEdit(
-      hasSelection
-        ? applyGain(
-            activeFile.audioBuffer,
-            gain,
-            activeFile.selectionStart,
-            activeFile.selectionEnd,
-          )
-        : applyGain(activeFile.audioBuffer, gain),
-    );
-    useEditorStore
-      .getState()
-      .log(`Volume ${formatGainDb(gain)}${hasSelection ? ' (selection)' : ''}`);
-  }
+  if (!activeFile) return;
+  const range = selectionOnly ? getSelectionRange(activeFile) : null;
+  commitEdit(applyGain(activeFile.audioBuffer, gain, range?.start, range?.end));
+  useEditorStore.getState().log(`Volume ${formatDb(gainToDb(gain))}${range ? ' (selection)' : ''}`);
 }
 
 // Fade-in of `duration` seconds starting at the selection start (or the file start).
 export function fadeIn(duration) {
   const activeFile = useEditorStore.getState().getActiveFile();
-  if (activeFile) {
-    commitEdit(
-      applyFadeIn(activeFile.audioBuffer, duration, activeFile.selectionStart ?? undefined),
-    );
-    useEditorStore.getState().log(`Fade in (${duration})`);
-  }
+  if (!activeFile) return;
+  const range = getSelectionRange(activeFile);
+  commitEdit(applyFadeIn(activeFile.audioBuffer, duration, range?.start));
+  useEditorStore.getState().log(`Fade in (${duration})`);
 }
 
 // Fade-out of `duration` seconds ending at the selection end (or the file end).
 export function fadeOut(duration) {
   const activeFile = useEditorStore.getState().getActiveFile();
-  if (activeFile) {
-    commitEdit(
-      applyFadeOut(activeFile.audioBuffer, duration, activeFile.selectionEnd ?? undefined),
-    );
-    useEditorStore.getState().log(`Fade out (${duration})`);
-  }
+  if (!activeFile) return;
+  const range = getSelectionRange(activeFile);
+  commitEdit(applyFadeOut(activeFile.audioBuffer, duration, range?.end));
+  useEditorStore.getState().log(`Fade out (${duration})`);
 }
 
 // Stores the spectrum of the selected (noise-only) audio as the file's noise profile. The
@@ -170,28 +141,19 @@ export function fadeOut(duration) {
 export function captureNoiseProfileFromSelection() {
   const state = useEditorStore.getState();
   const activeFile = state.getActiveFile();
-  if (!activeFile || activeFile.selectionStart === null || activeFile.selectionEnd === null) return;
-  if (
-    Math.abs(activeFile.selectionEnd - activeFile.selectionStart) *
-      activeFile.audioBuffer.sampleRate <
-    FFT_SIZE
-  ) {
+  const range = getSelectionRange(activeFile);
+  if (!range) return;
+  const sampleRate = activeFile.audioBuffer.sampleRate;
+  if ((range.end - range.start) * sampleRate < FFT_SIZE) {
     state.log(
       'Noise selection too short',
       'error',
-      `Select at least ${Math.ceil((FFT_SIZE / activeFile.audioBuffer.sampleRate) * 1000)} ms of noise-only audio to capture a profile`,
+      `Select at least ${Math.ceil((FFT_SIZE / sampleRate) * 1000)} ms of noise-only audio to capture a profile`,
     );
     return;
   }
-  const profile = captureNoiseProfile(
-    activeFile.audioBuffer,
-    activeFile.selectionStart,
-    activeFile.selectionEnd,
-  );
-  state.setNoiseProfile(profile);
-  state.log(
-    `Noise profile captured (${(activeFile.selectionEnd - activeFile.selectionStart).toFixed(2)}s)`,
-  );
+  state.setNoiseProfile(captureNoiseProfile(activeFile.audioBuffer, range.start, range.end));
+  state.log(`Noise profile captured (${(range.end - range.start).toFixed(2)}s)`);
 }
 
 // Spectral noise reduction using the captured profile, limited to the selection when present.
@@ -199,14 +161,16 @@ export async function applyNoiseReductionWithStrength(strength) {
   await runWithProcessing('Applying noise reduction...', async () => {
     const activeFile = useEditorStore.getState().getActiveFile();
     if (!activeFile || !activeFile.noiseProfile) return;
+    const range = getSelectionRange(activeFile);
     let result;
     try {
       result = await applyNoiseReduction(
         activeFile.audioBuffer,
         activeFile.noiseProfile,
         strength,
-        activeFile.selectionStart ?? undefined,
-        activeFile.selectionEnd ?? undefined,
+        range?.start,
+        range?.end,
+        createProgressReporter('Applying noise reduction...'),
       );
     } catch (error) {
       useEditorStore

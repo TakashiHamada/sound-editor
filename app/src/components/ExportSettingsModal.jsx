@@ -14,8 +14,20 @@ import {
   sampleRateOptions,
 } from '../export/exportConfig.js';
 
-// Small down-pointing triangle used as the custom <select> arrow.
-const SELECT_ARROW_IMAGE = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%238888aa'/%3E%3C/svg%3E")`;
+// Small down-pointing triangle (dim text colour) used as the custom <select> arrow.
+const SELECT_ARROW_IMAGE = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='${encodeURIComponent(colors.textDim)}'/%3E%3C/svg%3E")`;
+
+// A fresh draft: a copy of the saved config, or the defaults derived from the file.
+const initialDraft = (exportConfig, audioBuffer, fileName) => ({
+  ...(exportConfig ?? defaultExportConfig(audioBuffer, fileName)),
+});
+
+// Output / source size ratio colour: green below 50 %, white below 85 %, orange above.
+function ratioColor(ratio) {
+  if (ratio < 0.5) return colors.success;
+  if (ratio < 0.85) return colors.textBright;
+  return colors.warning;
+}
 
 export function ExportSettingsModal({
   isOpen,
@@ -25,9 +37,7 @@ export function ExportSettingsModal({
   exportConfig,
   onSaveConfig,
 }) {
-  const [draft, setDraft] = useState({
-    ...(exportConfig ?? defaultExportConfig(audioBuffer, fileName)),
-  });
+  const [draft, setDraft] = useState(() => initialDraft(exportConfig, audioBuffer, fileName));
   const [isSaveHovered, setIsSaveHovered] = useState(false);
   const [isCancelHovered, setIsCancelHovered] = useState(false);
   const [isCloseHovered, setIsCloseHovered] = useState(false);
@@ -35,20 +45,23 @@ export function ExportSettingsModal({
 
   // Reset the draft from the saved config (or the file's defaults) whenever the modal opens.
   useEffect(() => {
-    if (isOpen) setDraft({ ...(exportConfig ?? defaultExportConfig(audioBuffer, fileName)) });
+    if (isOpen) setDraft(initialDraft(exportConfig, audioBuffer, fileName));
     // The audio cannot change while the dialog is open (it blocks the pointer and App suspends the
     // keyboard shortcuts), so the draft only needs resetting when the dialog opens.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, fileName, exportConfig]);
 
+  if (!isOpen) return null;
+
+  // What will actually be written (legal bit depth / MPEG rate / bitrate for that rate).
+  const normalized = normalizeExportConfig(draft);
   const sourceSampleRate = audioBuffer?.sampleRate ?? 44100;
   // SRC quality only matters when the export rate differs from the decoded buffer's rate.
-  const needsResample = normalizeExportConfig(draft).sampleRate !== sourceSampleRate;
+  const needsResample = normalized.sampleRate !== sourceSampleRate;
   const duration = audioBuffer?.duration ?? 0;
   const sourceBytes = estimateSourceBytes(audioBuffer, duration);
   const outputBytes = estimateOutputBytes(draft, duration);
-
-  if (!isOpen) return null;
+  const ratio = outputBytes / sourceBytes;
 
   // Editing any individual field switches the preset selector to "Custom".
   const updateField = (key, value) => {
@@ -237,7 +250,7 @@ export function ExportSettingsModal({
           <div style={fieldStyle}>
             <label style={labelStyle}>Sample Rate</label>
             <select
-              value={normalizeExportConfig(draft).sampleRate}
+              value={normalized.sampleRate}
               onChange={(event) => updateField('sampleRate', Number(event.target.value))}
               onFocus={() => setFocusedField('sampleRate')}
               onBlur={() => setFocusedField(null)}
@@ -245,8 +258,7 @@ export function ExportSettingsModal({
             >
               {sampleRateOptions(draft).map((rate) => (
                 <option key={rate} value={rate}>
-                  {rate.toLocaleString()}
-                  {' Hz'}
+                  {rate.toLocaleString()} Hz
                 </option>
               ))}
             </select>
@@ -319,7 +331,7 @@ export function ExportSettingsModal({
                 <option value={256}>256 kbps</option>
                 <option value={320}>320 kbps (max)</option>
               </select>
-              {normalizeExportConfig(draft).bitrate !== draft.bitrate && (
+              {normalized.bitrate !== draft.bitrate && (
                 <div
                   style={{
                     fontSize: 11,
@@ -328,7 +340,7 @@ export function ExportSettingsModal({
                     textAlign: 'left',
                   }}
                 >
-                  {`${normalizeExportConfig(draft).sampleRate.toLocaleString()} Hz (MPEG-2) supports at most 160 kbps — ${normalizeExportConfig(draft).bitrate} kbps will be used.`}
+                  {`${normalized.sampleRate.toLocaleString()} Hz (MPEG-2/2.5) supports at most 160 kbps — ${normalized.bitrate} kbps will be used.`}
                 </div>
               )}
             </div>
@@ -401,9 +413,7 @@ export function ExportSettingsModal({
                 {formatBytes(Math.round(outputBytes))}
               </div>
               <div style={{ fontSize: 10, color: colors.textDim, marginTop: 2 }}>
-                {'from '}
-                {formatBytes(Math.round(sourceBytes))}
-                {' (16-bit WAV eq.)'}
+                from {formatBytes(Math.round(sourceBytes))} (16-bit WAV eq.)
               </div>
             </div>
             <div>
@@ -419,22 +429,14 @@ export function ExportSettingsModal({
               <div
                 style={{
                   fontSize: 14,
-                  color:
-                    outputBytes / sourceBytes < 0.5
-                      ? colors.success
-                      : outputBytes / sourceBytes < 0.85
-                        ? colors.textBright
-                        : colors.warning,
+                  color: ratioColor(ratio),
                   fontWeight: 500,
                 }}
               >
-                {sourceBytes > 0 ? ((outputBytes / sourceBytes) * 100).toFixed(1) : '—'}
-                {'%'}
+                {sourceBytes > 0 ? (ratio * 100).toFixed(1) : '—'}%
               </div>
               <div style={{ fontSize: 10, color: colors.textDim, marginTop: 2 }}>
-                {'saves '}
-                {sourceBytes > 0 ? (100 - (outputBytes / sourceBytes) * 100).toFixed(0) : '—'}
-                {'%'}
+                saves {sourceBytes > 0 ? (100 - ratio * 100).toFixed(0) : '—'}%
               </div>
             </div>
             <div>
@@ -454,8 +456,7 @@ export function ExportSettingsModal({
                   fontWeight: 500,
                 }}
               >
-                {duration.toFixed(2)}
-                {'s'}
+                {duration.toFixed(2)}s
               </div>
             </div>
           </div>
@@ -488,7 +489,7 @@ export function ExportSettingsModal({
           </button>
           <button
             onClick={() => {
-              onSaveConfig(normalizeExportConfig(draft));
+              onSaveConfig(normalized);
               onClose();
             }}
             onMouseEnter={() => setIsSaveHovered(true)}

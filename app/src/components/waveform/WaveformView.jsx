@@ -3,13 +3,13 @@
 // mouse position plus the "reveal time" auto-scroll used by seeking / edge setting.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { setRevealHandler } from '../../selection/selectionActions.js';
-import { SELECTION_BAR_HEIGHT, SelectionBar } from './SelectionBar.jsx';
+import { setRevealHandler } from '../../actions/selectionActions.js';
+import { MAX_ZOOM, MIN_ZOOM } from '../../store/editorStore.js';
+import { colors } from '../../theme.js';
+import { RULER_HEIGHT, SCROLLBAR_HEIGHT, SELECTION_BAR_HEIGHT } from './layout.js';
+import { SelectionBar } from './SelectionBar.jsx';
 import { TimeRuler } from './TimeRuler.jsx';
 import { WaveformCanvas } from './WaveformCanvas.jsx';
-
-export const SCROLLBAR_HEIGHT = 14;
-export const RULER_HEIGHT = 24;
 
 export function WaveformView({
   audioBuffer,
@@ -126,7 +126,7 @@ export function WaveformView({
       if (!audioBuffer) return;
       const wheelDelta = -event.deltaY;
       const zoomFactor = Math.exp(wheelDelta * 0.003);
-      const newZoom = Math.max(1, Math.min(1000, zoomRef.current * zoomFactor));
+      const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoomRef.current * zoomFactor));
       zoomRef.current = newZoom;
       const rect = containerRef.current?.getBoundingClientRect();
       if (!rect) return;
@@ -160,8 +160,8 @@ export function WaveformView({
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
-        background: '#0a0a18',
-        border: '1px solid #2a2a4a',
+        background: colors.waveformBg,
+        border: `1px solid ${colors.border}`,
         borderRadius: 4,
         minHeight: 0,
       }}
@@ -184,10 +184,10 @@ export function WaveformView({
       <div
         onMouseDown={handleScrollbarMouseDown}
         style={{
-          width: width,
+          width,
           height: SCROLLBAR_HEIGHT,
-          background: '#0f0f1a',
-          borderTop: '1px solid #2a2a4a',
+          background: colors.bgDark,
+          borderTop: `1px solid ${colors.border}`,
           position: 'relative',
           cursor: 'pointer',
           flexShrink: 0,
@@ -200,16 +200,15 @@ export function WaveformView({
             left: thumbLeft,
             width: thumbWidth,
             height: SCROLLBAR_HEIGHT - 4,
-            background: '#2a2a4a',
+            background: colors.border,
             borderRadius: 4,
-            border: '1px solid #3a3a5a',
+            border: `1px solid ${colors.borderLight}`,
             transition: scrollbarDragRef.current ? 'none' : 'left 0.05s ease-out',
           }}
         />
       </div>
       {audioBuffer && (
         <SelectionBar
-          audioBuffer={audioBuffer}
           selectionStart={selectionStart}
           selectionEnd={selectionEnd}
           currentTime={currentTime}

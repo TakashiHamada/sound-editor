@@ -20,7 +20,7 @@ export function computePeaks(samples, length, zoom, scrollX, width) {
       min = 0;
       max = 0;
     }
-    peaks[column] = { min: min, max: max };
+    peaks[column] = { min, max };
   }
   return peaks;
 }

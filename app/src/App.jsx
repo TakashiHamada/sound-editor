@@ -1,7 +1,7 @@
 // Root component: lays out toolbar, files panel, waveform, effects panel, status bar and modals,
 // wires them to the store and the module-level actions, and installs the keyboard shortcuts.
 import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
-import { useEditorStore } from './store/editorStore.js';
+import { useEditorStore, getSelectionRange } from './store/editorStore.js';
 import { loadFiles, closeFile, closeAllFiles } from './actions/fileActions.js';
 import { togglePlayback, stopAndRewind, stopIfPlaying } from './actions/playbackActions.js';
 import {
@@ -30,6 +30,7 @@ import {
   saveExportConfig,
   resetExportConfig,
 } from './actions/exportActions.js';
+import { jumpToStart, jumpToEnd, selectToStart, selectToEnd } from './actions/selectionActions.js';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts.js';
 import { Toolbar } from './components/Toolbar.jsx';
 import { WaveformView } from './components/waveform/WaveformView.jsx';
@@ -74,6 +75,10 @@ export function App() {
         onZoomOut: zoomOut,
         onOpen: openFilePicker,
         onExport: exportWithCurrentSettings,
+        onJumpToStart: jumpToStart,
+        onJumpToEnd: jumpToEnd,
+        onSelectToStart: selectToStart,
+        onSelectToEnd: selectToEnd,
         onMoveLeft: movePlayheadLeft,
         onMoveRight: movePlayheadRight,
       }),
@@ -89,9 +94,7 @@ export function App() {
     stopIfPlaying();
   }, [activeFileId]);
   const hasAudio = !!activeFile;
-  const hasSelection = activeFile
-    ? activeFile.selectionStart !== null && activeFile.selectionEnd !== null
-    : false;
+  const hasSelection = getSelectionRange(activeFile) !== null;
   return (
     <div
       style={{

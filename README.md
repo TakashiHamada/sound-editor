@@ -76,37 +76,38 @@ The top-right corner shows `<branch> | <YYYY-MM-DD HH:MM JST>`. `vite.config.js`
 | `main.jsx` | Entry: starts the empty-state placeholder, mounts `<App/>` in `StrictMode` |
 | `App.jsx` | Layout and wiring: subscribes to the store, passes state/actions to panels, installs keyboard shortcuts |
 | `version.js` | Build-time branch / JST timestamp for the banner |
-| `theme.js` | Shared color palette |
-| `utils/format.js` | `formatTime` (`MM:SS.mmm`) and `formatBytes` |
-| **store/** `editorStore.js` | zustand store: files, selection, zoom/scroll, playhead, undo history, clipboard, export config, log, processing overlay |
+| `theme.js` | `colors`: the shared palette (surfaces, text, accent, selection / playhead, status, level meter) |
+| `utils/format.js` | `formatTime` (`MM:SS.mmm`) / `parseTime`, `formatBytes`, `dbToGain` / `gainToDb` / `formatDb`, `formatBitDepth` |
+| **store/** `editorStore.js` | zustand store: files, selection, zoom/scroll, playhead, undo history, clipboard, export config, log, processing overlay; `getSelectionRange`, `MIN_ZOOM` / `MAX_ZOOM` |
 | **actions/** | Plain functions behind toolbar buttons / shortcuts, reading and writing the store |
 | `fileActions.js` | `loadFiles` (decode + WAV header metadata), `closeFile`, `closeAllFiles` |
 | `editActions.js` | copy / cut / paste / delete / select all / undo / redo / volume / fades / noise reduction |
 | `playbackActions.js` | `togglePlayback`, `stopAndRewind` |
 | `viewActions.js` | zoom in / out / fit, playhead nudging |
 | `exportActions.js` | export with current settings, save / reset export config |
+| `selectionActions.js` | seek, set one selection edge, clear, Home / End jumps, scroll-into-view (`revealTime`) hook |
 | `runWithProcessing.js` | show the processing overlay around an async task |
+| `progress.js` | `createProgressReporter(label)`: progress bar text + yield for long loops |
 | **audio/** | Web Audio helpers, no React |
 | `audioContext.js` | shared lazily-created `AudioContext` |
 | `decode.js` | decoding fallback chain (see below) |
 | `wavHeader.js` | RIFF `fmt ` chunk reader (walks chunks, no fixed offsets) |
-| `bufferMeta.js` | carries `_original*` format metadata across new `AudioBuffer`s |
+| `bufferMeta.js` | carries `_original*` format metadata across new `AudioBuffer`s; `originalFormat(buffer)` |
 | `bufferOps.js` | clone / extract / delete / insert / gain / fades / resample / mono↔stereo |
 | `playback.js` | playback graph, playhead animation loop, level metering |
 | `noiseReduction.js` | STFT noise-profile capture and spectral-subtraction reduction |
 | **export/** | |
 | `exportConfig.js` | default config, normalisation (`normalizeExportConfig`), sample-rate options, size estimators |
 | `exportActiveFile.js` | the export pipeline (resample → channels → encode → download → log) |
-| `wavEncoder.js` / `mp3Encoder.js` | WAV writer; async MP3 encoder loop with progress |
+| `wavEncoder.js` / `mp3Encoder.js` | WAV writer; async MP3 encoder loop (optional progress callback) |
 | `download.js` | blob download via a temporary `<a download>` |
-| **selection/** `selectionActions.js` | seek, set one selection edge, time parsing, edge-grab / snap thresholds, scroll-into-view hook |
-| **hooks/** `useKeyboardShortcuts.js` | global shortcuts (ignored while typing in inputs) |
-| **components/** | `Toolbar`, `FilesPanel`, `EffectsPanel`, `StatusBar` (+ level meter), `ExportSettingsModal`, `ProcessingModal`, `HelpDialog` |
-| **components/waveform/** | `WaveformView` (layout, wheel zoom, scrollbar), `WaveformCanvas` (drawing + mouse selection), `TimeRuler`, `SelectionBar`, `peaks.js` |
+| **hooks/** | `useKeyboardShortcuts.js` (global shortcuts, ignored while typing in inputs; actions come from App's handler map), `useFileDrop.js` (file drag & drop target) |
+| **components/** | `Toolbar`, `FilesPanel`, `EffectsPanel`, `StatusBar` (+ level meter), `ExportSettingsModal`, `ProcessingModal`, `HelpDialog`, `Divider` |
+| **components/waveform/** | `WaveformView` (layout, wheel zoom, scrollbar), `WaveformCanvas` (drawing + mouse selection), `TimeRuler`, `SelectionBar`, `peaks.js`, `layout.js` (ruler / scrollbar / selection-bar heights), `selectionGeometry.js` (snap / grip / drag thresholds, edge hit-test) |
 | **placeholder/** | framework-free animated geometric motifs shown in the empty waveform area |
 | **vendor/** `lamejs.js` | patched MP3 encoder — do not reformat; see header comment |
 
-Dependencies (who imports whom): `App` → `components`, `actions`, `hooks`, `store`; `components` → `store`, `selection`, `theme`, `utils`, plus `export/exportConfig.js` (settings modal, size preview) and `audio/playback.js` (level meter); `hooks` → `selection`, `store`; `actions` / `selection` → `store`, `audio`, `export`; `store` → `audio` (buffer cloning). `audio/` and `export/` contain no React; only the long-running loops (`noiseReduction.js`, `mp3Encoder.js`) and the export pipeline talk to the store, to report progress and results.
+Dependencies (who imports whom): `App` → `components`, `actions`, `hooks`, `store`; `components` → `store`, `theme`, `utils`, `hooks/useFileDrop.js` (drop targets), `actions/selectionActions.js` (selection bar, reveal hook), plus `export/exportConfig.js` (settings modal, size preview), `audio/bufferMeta.js` (file info) and `audio/playback.js` (level meter); `hooks` → `store`; `actions` → `store`, `audio`, `export`, `utils`; `export/exportActiveFile.js` → `store`, `actions/progress.js`; `store` → `audio` (buffer cloning). `audio/` and `export/` contain no React. `audio/` never touches the store: the long-running loops (`noiseReduction.js`, `mp3Encoder.js`) take an optional `onProgress(done, total)` callback that the callers fill with `createProgressReporter`. Only the export pipeline reads the store (active file) and logs its result.
 
 ### Geometric placeholder (`placeholder/`)
 
@@ -213,14 +214,14 @@ Decoding fallback chain:
 4. HTML media element fallback
 5. mpg123 WASM decoder (MP3); the true sample rate is re-read from the MPEG frame header
 
-`actions/fileActions.js` then reads WAV format metadata with `readWavFormat` and adds the file to the store.
+`actions/fileActions.js` then reads WAV format metadata from the first 64 KB of the file with `readWavFormat` and adds the file to the store. If every step fails, the error carries a diagnostic report (file size, ID3 tags, first MPEG frame header, each attempt's error); it is built only on that failure path.
 
 ### Export (`export/`)
 
 | Format | Function | Details |
 |--------|----------|---------|
 | WAV | `encodeWav(audioBuffer, bitDepth)` | RIFF/WAVE header + PCM. 8-bit = unsigned PCM, 16/24-bit = signed PCM, 32-bit = IEEE float. Unknown depths fall back to 16. Throws a readable error past the 4 GB RIFF limit. |
-| MP3 | `encodeMp3(audioBuffer, kbps, opts)` | lamejs, CBR only. `opts = { mode, lowpass, quality }` — MPEG mode (0=stereo, 1=joint, 3=mono), lowpass Hz, quality 0-9. `async`: yields to the event loop every ~30 ms and reports progress (see below), so callers must `await` it. |
+| MP3 | `encodeMp3(audioBuffer, kbps, opts, onProgress)` | lamejs, CBR only. `opts = { mode, lowpass, quality }` — MPEG mode (0=stereo, 1=joint, 3=mono), lowpass Hz, quality 0-9. `async`: awaits `onProgress(done, total)` after every frame (the pipeline passes a progress reporter, see below), so callers must `await` it. |
 
 Export flow (`exportWithCurrentSettings` → `exportActiveFile(config)`):
 1. Resolve the config (`exportConfig ?? defaultExportConfig(buffer, fileName)`) and normalize it with `normalizeExportConfig` — the same helper the settings modal and the size estimators use: `bitDepth` → 8/16/24/32; for MP3, `sampleRate` → nearest legal MPEG rate (8000/11025/12000/16000/22050/24000/32000/44100/48000) and `bitrate` → the range that MPEG version allows (8-160 kbps below 32 kHz, 32-320 kbps above).
@@ -234,7 +235,7 @@ Export flow (`exportWithCurrentSettings` → `exportActiveFile(config)`):
 
 #### Processing overlay progress
 
-`ProcessingModal` shows the store's `processing` message after a 500 ms debounce, so quick operations don't flash. The debounce effect depends on **whether a message is present** (`[!!message]`), not on its text — otherwise live percentages would keep resetting the timer. `applyNoiseReduction` and `encodeMp3` update the text every ~30 ms (`Label... ` + 20-segment `█`/`░` bar + ` NN%`) and `await new Promise(r => setTimeout(r))` to yield. Follow this pattern for any other long synchronous loop.
+`ProcessingModal` shows the store's `processing` message after a 500 ms debounce, so quick operations don't flash. The debounce effect depends on **whether a message is present** (`[!!message]`), not on its text — otherwise live percentages would keep resetting the timer. `applyNoiseReduction` and `encodeMp3` await an optional `onProgress(done, total)` after each unit of work; their callers pass `createProgressReporter(label)` from `actions/progress.js`, which — at most every ~30 ms — sets the text (`Label... ` + 20-segment `█`/`░` bar + ` NN%`) and yields with `await new Promise(r => setTimeout(r))`. Follow this pattern for any other long synchronous loop.
 
 #### MP3 encoding options (`vendor/lamejs.js`)
 
@@ -322,8 +323,9 @@ Playback belongs to the file that started it: `App` stops it whenever the active
 BufferSource → [ChannelSplitter → AnalyserL/R → ChannelMerger] → GainNode → Destination
 ```
 
-### Selection editing (`selection/`, `components/waveform/`)
+### Selection editing (`actions/selectionActions.js`, `components/waveform/`)
 
+- `getSelectionRange(file)` (store) returns `{ start, end }` or `null`; a zero-length selection counts as no selection.
 - Dragging clamps to `[0, duration]`; within `SNAP_PX` (8 px) of the clip start/end it snaps to exactly 0 / duration.
 - Mouse-down within `GRIP_PX` (6 px) of a selection edge drags that edge (yellow grips, ↔ cursor).
 - Movements under `DRAG_PX` (3 px) count as a click (seek, no selection).

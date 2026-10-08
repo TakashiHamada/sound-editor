@@ -3,20 +3,28 @@
 // a Clear button.
 
 import { useRef, useState } from 'react';
-import { parseTime, seekTo, setSelectionEdge } from '../../selection/selectionActions.js';
-import { useEditorStore } from '../../store/editorStore.js';
-import { formatTime } from '../../utils/format.js';
-
-export const SELECTION_BAR_HEIGHT = 32;
+import {
+  clearSelection,
+  jumpToEnd,
+  jumpToStart,
+  selectToEnd,
+  selectToStart,
+  setSelectionEdge,
+} from '../../actions/selectionActions.js';
+import { getSelectionRange } from '../../store/editorStore.js';
+import { colors } from '../../theme.js';
+import { formatTime, parseTime } from '../../utils/format.js';
+import { Divider } from '../Divider.jsx';
+import { SELECTION_BAR_HEIGHT } from './layout.js';
 
 const buttonStyle = {
   height: 24,
   minWidth: 28,
   padding: '0 7px',
-  border: '1px solid #3a3a5a',
+  border: `1px solid ${colors.borderLight}`,
   borderRadius: 3,
-  background: '#16213e',
-  color: '#e0e0e0',
+  background: colors.bgPanel,
+  color: colors.text,
   fontSize: 12,
   fontFamily: 'inherit',
   whiteSpace: 'nowrap',
@@ -35,7 +43,7 @@ function SelectionBarButton({ label, title, onClick, disabled, color }) {
       onClick={onClick}
       style={{
         ...buttonStyle,
-        ...(color ? { color: color } : {}),
+        ...(color ? { color } : {}),
         opacity: disabled ? 0.4 : 1,
         cursor: disabled ? 'default' : 'pointer',
       }}
@@ -79,7 +87,7 @@ function TimeField({ label, title, value, onCommit, disabled }) {
         display: 'flex',
         alignItems: 'center',
         gap: 4,
-        color: '#8888aa',
+        color: colors.textDim,
         fontSize: 11,
         flexShrink: 0,
       }}
@@ -130,9 +138,9 @@ function TimeField({ label, title, value, onCommit, disabled }) {
           width: 86,
           height: 24,
           padding: '0 6px',
-          background: '#0f0f1a',
-          color: '#e0e0e0',
-          border: `1px solid ${isInvalid ? '#ef5350' : '#2a2a4a'}`,
+          background: colors.bgInput,
+          color: colors.text,
+          border: `1px solid ${isInvalid ? colors.danger : colors.border}`,
           borderRadius: 3,
           fontFamily: 'monospace',
           fontSize: 12,
@@ -143,27 +151,15 @@ function TimeField({ label, title, value, onCommit, disabled }) {
   );
 }
 
-export function SelectionBar({ audioBuffer, selectionStart, selectionEnd, currentTime }) {
-  const duration = audioBuffer ? audioBuffer.duration : 0;
-  const hasSelection =
-    selectionStart != null && selectionEnd != null && selectionStart !== selectionEnd;
-  const selectionLow = hasSelection ? Math.min(selectionStart, selectionEnd) : null;
-  const selectionHigh = hasSelection ? Math.max(selectionStart, selectionEnd) : null;
-  // Called as a plain function (not rendered as a component), as in the original.
-  const renderDivider = () => (
-    <div
-      style={{
-        width: 1,
-        height: 18,
-        background: '#2a2a4a',
-        margin: '0 4px',
-        flexShrink: 0,
-      }}
-    />
-  );
+// Separator between the bar's control groups.
+function BarDivider() {
+  return <Divider height={18} colorProperty="background" margin="0 4px" flexShrink={0} />;
+}
+
+export function SelectionBar({ selectionStart, selectionEnd, currentTime }) {
+  const range = getSelectionRange({ selectionStart, selectionEnd });
   return (
     <div
-      data-selbar=""
       style={{
         height: SELECTION_BAR_HEIGHT,
         flexShrink: 0,
@@ -171,8 +167,8 @@ export function SelectionBar({ audioBuffer, selectionStart, selectionEnd, curren
         alignItems: 'center',
         gap: 4,
         padding: '0 6px',
-        borderTop: '1px solid #2a2a4a',
-        background: '#0f0f1a',
+        borderTop: `1px solid ${colors.border}`,
+        background: colors.bgDark,
         overflowX: 'auto',
         overflowY: 'hidden',
         userSelect: 'none',
@@ -181,68 +177,68 @@ export function SelectionBar({ audioBuffer, selectionStart, selectionEnd, curren
       <SelectionBarButton
         label="⏮ Start"
         title="Jump playhead to the very start (Home)"
-        onClick={() => seekTo(0)}
+        onClick={jumpToStart}
       />
       <SelectionBarButton
         label="End ⏭"
         title="Jump playhead to the very end (End)"
-        onClick={() => seekTo(duration)}
+        onClick={jumpToEnd}
       />
-      {renderDivider()}
+      <BarDivider />
       <SelectionBarButton
         label="⇤"
         title="Set selection start to the very start of the clip (Shift+Home)"
-        onClick={() => setSelectionEdge('start', 0)}
+        onClick={selectToStart}
       />
       <TimeField
         label="In"
         title="Selection start — type a time (e.g. 1:23.456 or 83.456) and press Enter"
-        value={selectionLow}
+        value={range?.start ?? null}
         onCommit={(time) => setSelectionEdge('start', time)}
       />
       <SelectionBarButton
         label="◆"
         title="Set selection start to the playhead"
-        color="#ff5722"
+        color={colors.playhead}
         onClick={() => setSelectionEdge('start', currentTime)}
       />
-      {renderDivider()}
+      <BarDivider />
       <TimeField
         label="Out"
         title="Selection end — type a time (e.g. 1:23.456 or 83.456) and press Enter"
-        value={selectionHigh}
+        value={range?.end ?? null}
         onCommit={(time) => setSelectionEdge('end', time)}
       />
       <SelectionBarButton
         label="◆"
         title="Set selection end to the playhead"
-        color="#ff5722"
+        color={colors.playhead}
         onClick={() => setSelectionEdge('end', currentTime)}
       />
       <SelectionBarButton
         label="⇥"
         title="Set selection end to the very end of the clip (Shift+End)"
-        onClick={() => setSelectionEdge('end', duration)}
+        onClick={selectToEnd}
       />
-      {renderDivider()}
+      <BarDivider />
       <span
         style={{
-          color: '#8888aa',
+          color: colors.textDim,
           fontSize: 11,
           whiteSpace: 'nowrap',
           flexShrink: 0,
         }}
       >
-        {'Length '}
-        <span style={{ color: '#e0e0e0', fontFamily: 'monospace' }}>
-          {hasSelection ? `${(selectionHigh - selectionLow).toFixed(3)}s` : '--'}
+        Length{' '}
+        <span style={{ color: colors.text, fontFamily: 'monospace' }}>
+          {range ? `${(range.end - range.start).toFixed(3)}s` : '--'}
         </span>
       </span>
       <SelectionBarButton
         label="Clear"
         title="Clear selection"
-        disabled={!hasSelection}
-        onClick={() => useEditorStore.getState().setSelection(null, null)}
+        disabled={!range}
+        onClick={clearSelection}
       />
     </div>
   );

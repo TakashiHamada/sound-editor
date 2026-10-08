@@ -1,9 +1,9 @@
-// Encodes an AudioBuffer to CBR MP3 with lamejs, yielding to the UI and reporting progress
-// through the store's processing message.
+// Encodes an AudioBuffer to CBR MP3 with lamejs.
 import { Mp3Encoder } from '../vendor/lamejs.js';
-import { useEditorStore } from '../store/editorStore.js';
 
-export async function encodeMp3(buffer, kbps, options) {
+// `options` = { mode, lowpass, quality } (see the patched Mp3Encoder). Awaits the optional
+// `onProgress(doneFrames, totalFrames)` after every input frame so the caller can yield to the UI.
+export async function encodeMp3(buffer, kbps, options, onProgress) {
   const numChannels = buffer.numberOfChannels;
   const sampleRate = buffer.sampleRate;
   const length = buffer.length;
@@ -22,7 +22,6 @@ export async function encodeMp3(buffer, kbps, options) {
   const right = numChannels > 1 ? toInt16(buffer.getChannelData(1)) : null;
   const totalFrames = Math.max(1, Math.ceil(length / FRAME_SAMPLES));
   let doneFrames = 0;
-  let lastYield = performance.now();
   for (let start = 0; start < length; start += FRAME_SAMPLES) {
     const end = Math.min(start + FRAME_SAMPLES, length);
     const leftChunk = left.subarray(start, end);
@@ -33,22 +32,7 @@ export async function encodeMp3(buffer, kbps, options) {
     } else encoded = encoder.encodeBuffer(leftChunk);
     if (encoded.length > 0) chunks.push(encoded);
     doneFrames++;
-    if (performance.now() - lastYield > 30) {
-      const percent = Math.round((doneFrames / totalFrames) * 100);
-      const filledBlocks = Math.round(percent / 5);
-      useEditorStore
-        .getState()
-        .setProcessing(
-          'Encoding MP3... ' +
-            '█'.repeat(filledBlocks) +
-            '░'.repeat(20 - filledBlocks) +
-            ' ' +
-            percent +
-            '%',
-        );
-      await new Promise((resolve) => setTimeout(resolve));
-      lastYield = performance.now();
-    }
+    await onProgress?.(doneFrames, totalFrames);
   }
   const tail = encoder.flush();
   if (tail.length > 0) chunks.push(tail);

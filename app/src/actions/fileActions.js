@@ -2,8 +2,13 @@
 import { useEditorStore } from '../store/editorStore.js';
 import { decodeAudioFile } from '../audio/decode.js';
 import { readWavFormat } from '../audio/wavHeader.js';
+import { originalFormat } from '../audio/bufferMeta.js';
 import { stopPlayback } from '../audio/playback.js';
+import { formatBitDepth } from '../utils/format.js';
 import { runWithProcessing } from './runWithProcessing.js';
+
+// Bytes read from the start of a file to find the WAV `fmt ` chunk.
+const WAV_HEADER_BYTES = 1 << 16;
 
 // Decodes each file and adds it to the store. For WAV sources the original bit depth, sample
 // rate and channel count are read from the header and stashed on the AudioBuffer so the export
@@ -16,7 +21,7 @@ export async function loadFiles(files) {
         const audioBuffer = await decodeAudioFile(file);
         const fileSize = file.size;
         try {
-          const bytes = await file.arrayBuffer();
+          const bytes = await file.slice(0, WAV_HEADER_BYTES).arrayBuffer();
           const wavFormat = readWavFormat(new DataView(bytes));
           if (wavFormat) {
             const bitDepth = wavFormat.bits;
@@ -41,10 +46,11 @@ export async function loadFiles(files) {
           );
           continue;
         }
+        const format = originalFormat(audioBuffer);
         state.log(
           `Loaded "${file.name}"`,
           'info',
-          `Loaded "${file.name}" — ${audioBuffer._originalSampleRate ?? audioBuffer.sampleRate} Hz, ${(audioBuffer._originalChannels ?? audioBuffer.numberOfChannels) === 1 ? 'mono' : 'stereo'}, ${audioBuffer.duration.toFixed(1)}s, ${audioBuffer._originalBitDepth ? audioBuffer._originalBitDepth + 'bit' : '32-bit float'}`,
+          `Loaded "${file.name}" — ${format.sampleRate} Hz, ${format.channels === 1 ? 'mono' : 'stereo'}, ${audioBuffer.duration.toFixed(1)}s, ${formatBitDepth(format.bitDepth)}`,
         );
       } catch (error) {
         state.log('Load failed', 'error', `Failed to load "${file.name}": ${error.message}`);

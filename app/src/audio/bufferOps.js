@@ -5,6 +5,12 @@
 import { getAudioContext } from './audioContext.js';
 import { copyOriginalMeta } from './bufferMeta.js';
 
+// Sample index for `time` seconds, clamped to [0, length]; `fallback` when `time` is undefined.
+function timeToSample(time, sampleRate, fallback, length) {
+  if (time === undefined) return fallback;
+  return Math.max(0, Math.min(length, Math.floor(time * sampleRate)));
+}
+
 // Deep copy of `buffer` created on `context`, keeping the original-file metadata.
 export function cloneAudioBuffer(context, buffer) {
   const copy = context.createBuffer(buffer.numberOfChannels, buffer.length, buffer.sampleRate);
@@ -17,8 +23,8 @@ export function cloneAudioBuffer(context, buffer) {
 export function extractRange(buffer, startTime, endTime) {
   const context = getAudioContext();
   const sampleRate = buffer.sampleRate;
-  const startSample = Math.max(0, Math.floor(startTime * sampleRate));
-  const endSample = Math.min(buffer.length, Math.floor(endTime * sampleRate));
+  const startSample = timeToSample(startTime, sampleRate, 0, buffer.length);
+  const endSample = timeToSample(endTime, sampleRate, buffer.length, buffer.length);
   const length = endSample - startSample;
   if (length <= 0) return context.createBuffer(buffer.numberOfChannels, 1, sampleRate);
   const result = context.createBuffer(buffer.numberOfChannels, length, sampleRate);
@@ -34,8 +40,8 @@ export function extractRange(buffer, startTime, endTime) {
 export function deleteRange(buffer, startTime, endTime) {
   const context = getAudioContext();
   const sampleRate = buffer.sampleRate;
-  const startSample = Math.max(0, Math.floor(startTime * sampleRate));
-  const endSample = Math.min(buffer.length, Math.floor(endTime * sampleRate));
+  const startSample = timeToSample(startTime, sampleRate, 0, buffer.length);
+  const endSample = timeToSample(endTime, sampleRate, buffer.length, buffer.length);
   const remainingLength = buffer.length - (endSample - startSample);
   if (remainingLength <= 0) return context.createBuffer(buffer.numberOfChannels, 1, sampleRate);
   const result = context.createBuffer(buffer.numberOfChannels, remainingLength, sampleRate);
@@ -54,11 +60,8 @@ export function applyGain(buffer, gain, startTime, endTime) {
   const context = getAudioContext();
   const sampleRate = buffer.sampleRate;
   const clampedGain = Math.max(0, Math.min(10, gain));
-  const startSample = startTime === undefined ? 0 : Math.max(0, Math.floor(startTime * sampleRate));
-  const endSample =
-    endTime === undefined
-      ? buffer.length
-      : Math.min(buffer.length, Math.floor(endTime * sampleRate));
+  const startSample = timeToSample(startTime, sampleRate, 0, buffer.length);
+  const endSample = timeToSample(endTime, sampleRate, buffer.length, buffer.length);
   const result = context.createBuffer(buffer.numberOfChannels, buffer.length, sampleRate);
   for (let channel = 0; channel < buffer.numberOfChannels; channel++) {
     const source = buffer.getChannelData(channel);
@@ -74,7 +77,7 @@ export function applyGain(buffer, gain, startTime, endTime) {
 export function applyFadeIn(buffer, duration, startTime) {
   const context = getAudioContext();
   const sampleRate = buffer.sampleRate;
-  const startSample = startTime === undefined ? 0 : Math.max(0, Math.floor(startTime * sampleRate));
+  const startSample = timeToSample(startTime, sampleRate, 0, buffer.length);
   const fadeLength = Math.floor(duration * sampleRate);
   const endSample = Math.min(buffer.length, startSample + fadeLength);
   const result = context.createBuffer(buffer.numberOfChannels, buffer.length, sampleRate);
@@ -94,10 +97,7 @@ export function applyFadeIn(buffer, duration, startTime) {
 export function applyFadeOut(buffer, duration, endTime) {
   const context = getAudioContext();
   const sampleRate = buffer.sampleRate;
-  const endSample =
-    endTime === undefined
-      ? buffer.length
-      : Math.min(buffer.length, Math.floor(endTime * sampleRate));
+  const endSample = timeToSample(endTime, sampleRate, buffer.length, buffer.length);
   const fadeLength = Math.floor(duration * sampleRate);
   const startSample = Math.max(0, endSample - fadeLength);
   const result = context.createBuffer(buffer.numberOfChannels, buffer.length, sampleRate);
@@ -116,16 +116,7 @@ export function applyFadeOut(buffer, duration, endTime) {
 // Renders `buffer` at `targetSampleRate` through an OfflineAudioContext. For 'high' / 'medium'
 // quality an anti-aliasing low-pass is inserted just below the lower of the two Nyquist rates.
 export async function resample(buffer, targetSampleRate, quality) {
-  if (buffer.sampleRate === targetSampleRate) {
-    const copy = getAudioContext().createBuffer(
-      buffer.numberOfChannels,
-      buffer.length,
-      buffer.sampleRate,
-    );
-    for (let channel = 0; channel < buffer.numberOfChannels; channel++)
-      copy.copyToChannel(buffer.getChannelData(channel).slice(), channel);
-    return copy;
-  }
+  if (buffer.sampleRate === targetSampleRate) return cloneAudioBuffer(getAudioContext(), buffer);
   const duration = buffer.duration;
   const length = Math.ceil(duration * targetSampleRate);
   const offlineContext = new OfflineAudioContext(buffer.numberOfChannels, length, targetSampleRate);
@@ -178,15 +169,6 @@ export function insertBuffer(buffer, inserted, time) {
     target.set(inserted.getChannelData(Math.min(channel, inserted.numberOfChannels - 1)), insertAt);
     target.set(source.subarray(insertAt), insertAt + inserted.length);
   }
-  return result;
-}
-
-// Duplicates channel 0 of a mono buffer into a 2-channel buffer.
-export function monoToStereo(buffer) {
-  const result = getAudioContext().createBuffer(2, buffer.length, buffer.sampleRate);
-  const mono = buffer.getChannelData(0);
-  result.copyToChannel(mono, 0);
-  result.copyToChannel(mono, 1);
   return result;
 }
 
