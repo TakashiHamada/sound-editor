@@ -1,0 +1,36 @@
+{
+  "name": "sound-editor",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Browser-based audio editor (React + Web Audio API). Source lives in app/, `npm run build` writes the GitHub Pages site (index.html + assets/) to the repo root.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "playwright test",
+    "test:build": "vite build && playwright test",
+    "format": "prettier --write app/src tests \"*.config.js\"",
+    "format:check": "prettier --check app/src tests \"*.config.js\"",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "mpg123-decoder": "1.0.3",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "zustand": "5.0.15"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@playwright/test": "1.56.1",
+    "@vitejs/plugin-react": "6.1.2",
+    "eslint": "10.12.0",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "globals": "17.13.0",
+    "prettier": "3.8.1",
+    "vite": "8.3.3"
+  },
+  "engines": {
+    "node": "^20.19.0 || >=22.13.0"
+  }
+}
